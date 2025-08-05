@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cost of Funds (COF) Comparison Summary</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 2rem;
+      background-color: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      color: #006699;
+    }
+    pre {
+      background: #eee;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+    code {
+      color: #c7254e;
+      background-color: #f9f2f4;
+      padding: 0.2rem 0.4rem;
+      border-radius: 4px;
+    }
+    .section {
+      margin-bottom: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>Cost of Funds (COF) Calculation Comparison</h1>
+
+  <div class="section">
+    <h2>Overview</h2>
+    <p>This page outlines the logic behind the COF calculation used in both Excel and the VB.NET implementation. The values are very close, but small differences arise due to the methodology used for computing monthly funding costs and the IRR calculation.</p>
+  </div>
+
+  <div class="section">
+    <h2>COF Results</h2>
+    <ul>
+      <li><strong>Excel COF (P3):</strong> 0.049208</li>
+      <li><strong>VB.NET COF:</strong> 0.0493815</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Primary Difference Identified</h2>
+    <p>
+      The Excel model calculates the monthly funding cost using the <strong>beginning balance</strong>, while the VB.NET version uses the <strong>principal paid</strong> that month. Here's the key line to update:
+    </p>
+    <pre><code>' Original line:
+monInt(month) = cofRates(month) * (30.0 / 360.0) * prinPmt(month)
+
+' Recommended fix:
+monInt(month) = cofRates(month) * (30.0 / 360.0) * outPrin(month - 1)</code></pre>
+    <p>This change will align your funding cost calculation more closely with Excel.</p>
+  </div>
+
+  <div class="section">
+    <h2>IRR Calculation</h2>
+    <p>Both methods calculate COF using IRR of the cash flow series:</p>
+    <ul>
+      <li><strong>First cash flow:</strong> -1000000 (loan disbursed)</li>
+      <li><strong>Next 180 flows:</strong> Monthly payments = principal + forward-looking cumulative funding cost</li>
+      <li><strong>IRR Result:</strong> Annualized by multiplying monthly IRR by 12</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Recommendation</h2>
+    <p>To match Excel precisely:</p>
+    <ol>
+      <li>Use <code>outPrin(month - 1)</code> in your funding cost calculation.</li>
+      <li>Ensure your IRR function uses similar precision or guess values as Excel’s <code>IRR()</code> function.</li>
+      <li>Double-check for rounding discrepancies in intermediate values.</li>
+    </ol>
+  </div>
+</body>
+</html>
