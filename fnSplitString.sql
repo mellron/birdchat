@@ -1,6 +1,29 @@
 /* -----------------------------------------
    Inline splitter with Ordinal (SQL 2016+ JSON; compat level 130)
-   ----------------------------------------- */
+
+
+   Why this version is faster (SQL Server 2016):
+   
+   - Inline TVF (not multi-statement): the optimizer inlines it into the caller’s plan,
+     enabling better join choices and parallelism. The old multi-statement TVF is opaque
+     with a fixed ~100-row estimate, and table variables are estimated at 1 row in 2016—
+     both lead to poor plans.
+   
+   - Set-based OPENJSON: splits the string in one pass (no WHILE / row-by-row inserts),
+     reducing CPU and logging.
+   
+   - More accurate cardinality: OPENJSON exposes actual row counts, so memory grants are
+     sized correctly and spills are less likely.
+   
+   - Fewer intermediates and sorts: no table variables with IDENTITY, no extra reordering;
+     we carry an Ordinal and order once at the end when needed.
+   
+   - Predicate pushdown: filters and projections on the split values can be pushed into
+     the inlined plan (not possible with the old TVF).
+   
+   Net: same results, deterministic pairing via Ordinal, lower CPU, and more stable plans.
+
+----------------------------------------- */
 CREATE OR ALTER FUNCTION dbo.fnSplitString
 (
     @DelimitedString NVARCHAR(MAX),
