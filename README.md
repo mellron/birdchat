@@ -1,7 +1,5 @@
 # Why did tickets get reversed?
 
-**Audience:** Business partners (plain English, 8th‑grade level)
-
 This note explains, in simple terms, how our system could put the **right amounts on the wrong tickets**, and what we changed to stop it from ever happening again.
 
 ---
@@ -84,8 +82,4 @@ A: With the Ordinal approach and the new checks, this specific flip should not h
 **Q: Did this change slow anything down?**
 A: No. The new approach is actually **faster** in most cases and easier for the database to optimize.
 
----
 
-## One‑line takeaway
-
-We stopped relying on “whatever order the database feels like,” and started matching each ticket and amount by a shared **position number**. That keeps the right dollars on the right tickets—every time.
