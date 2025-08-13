@@ -36,3 +36,27 @@ Once the HeldBlock exists for that CUSIP under LEID '010', the '010 US Bank Nati
 Extra tips:
 - LEIDs are char(3). Always use '010' (not 10) to preserve leading zero.
 - You can enumerate CUSIPs currently linked to a LEID by joining tblLglEnty → tblSfkpAcct → tblHolding for quick audits.
+
+
+cLglEnty.vb in buisness
+
+in the UI frmLglEnty is called .
+
+
+
+Description :
+
+Not exactly — even if the UI lets them run UpdateLglEnty, that will only update the legal entity’s details in tblLglEnty (like the name “US Bank National Association”).
+
+Your issue is that for the given CUSIP, there’s no holding record linking that CUSIP to LEID 010.
+GetOwnerLEID builds its Summary list only from LEIDs that have holdings for the CUSIP in question. So:
+
+If the link between CUSIP → safekeeper account → LEID doesn’t exist, changing the legal entity name won’t make it appear.
+
+To fix it, the user (or backend process) needs to create that CUSIP–LEID relationship in tblSfkpAcct/tblHolding — typically via procGetHeldBlk — not just update the entity name.
+
+So in short:
+
+Yes: They can use the UI form to correct the entity’s name if that’s wrong.
+
+No: They can’t resolve the missing Summary value just by running UpdateLglEnty; they’d also need to ensure the CUSIP is tied to that LEID in holdings.
