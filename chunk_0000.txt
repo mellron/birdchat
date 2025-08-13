@@ -60,3 +60,9 @@ So in short:
 Yes: They can use the UI form to correct the entity’s name if that’s wrong.
 
 No: They can’t resolve the missing Summary value just by running UpdateLglEnty; they’d also need to ensure the CUSIP is tied to that LEID in holdings.
+
+
+
+Why “010 US Bank National Association” isn’t showing
+That value only appears when the CUSIP is actually tied to LEID 010 in the investment details. In your case, the tblInvDtl row for that CUSIP doesn’t have OwnerLEID = '010', so it’s excluded from the results.
+
