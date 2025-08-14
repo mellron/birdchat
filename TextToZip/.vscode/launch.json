@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run .NET 9 Linux Executable",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/bin/Debug/net9.0/linux-x64/ZipToText",
+      "args": ["input.zip", "output", "2"],
+      "cwd": "${workspaceFolder}",
+      "terminal": "integrated",
+      "preLaunchTask": "build-linux-exe"
+    }
+  ]
+}

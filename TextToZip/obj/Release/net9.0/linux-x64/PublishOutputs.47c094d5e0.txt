@@ -1,0 +1,2 @@
+/home/doug/Development/repos/utility_programs/TextToZip/publish/TextToZip.pdb
+/home/doug/Development/repos/utility_programs/TextToZip/publish/TextToZip

@@ -1,0 +1,5 @@
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Release/net9.0/linux-x64/ZipToText.GeneratedMSBuildEditorConfig.editorconfig
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Release/net9.0/linux-x64/ZipToText.AssemblyInfoInputs.cache
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Release/net9.0/linux-x64/ZipToText.AssemblyInfo.cs
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Release/net9.0/linux-x64/ZipToText.csproj.CoreCompileInputs.cache
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Release/net9.0/linux-x64/ZipToText.sourcelink.json

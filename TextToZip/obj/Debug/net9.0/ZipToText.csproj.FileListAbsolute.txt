@@ -1,0 +1,15 @@
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/ZipToText
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/ZipToText.deps.json
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/ZipToText.runtimeconfig.json
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/ZipToText.dll
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/ZipToText.pdb
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ZipToText.GeneratedMSBuildEditorConfig.editorconfig
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ZipToText.AssemblyInfoInputs.cache
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ZipToText.AssemblyInfo.cs
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ZipToText.csproj.CoreCompileInputs.cache
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ZipToText.sourcelink.json
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ZipToText.dll
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/refint/ZipToText.dll
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ZipToText.pdb
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ZipToText.genruntimeconfig.cache
+/home/doug/Development/repos/utility_programs/ZipToText/obj/Debug/net9.0/ref/ZipToText.dll

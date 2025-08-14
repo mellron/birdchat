@@ -1,0 +1,5 @@
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/linux-x64/ZipToText
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/linux-x64/ZipToText.dll
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/linux-x64/ZipToText.deps.json
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/linux-x64/ZipToText.runtimeconfig.json
+/home/doug/Development/repos/utility_programs/ZipToText/bin/Debug/net9.0/linux-x64/ZipToText.pdb
