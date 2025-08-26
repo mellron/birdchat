@@ -1,93 +1,43 @@
-/* -----------------------------------------
-   Inline splitter with Ordinal (SQL 2016+ JSON; compat level 130)
+-- A) What @ProcessDt would the proc use?
+DECLARE @ProcessDt DATETIME = (SELECT MAX(processdate) FROM InputData.IPCUSDHoldings);
+SELECT @ProcessDt AS ProcessDt;
 
-
-   Why this version is faster (SQL Server 2016):
-   
-   - Inline TVF (not multi-statement): the optimizer inlines it into the caller’s plan,
-     enabling better join choices and parallelism. The old multi-statement TVF is opaque
-     with a fixed ~100-row estimate, and table variables are estimated at 1 row in 2016—
-     both lead to poor plans.
-   
-   - Set-based OPENJSON: splits the string in one pass (no WHILE / row-by-row inserts),
-     reducing CPU and logging.
-   
-   - More accurate cardinality: OPENJSON exposes actual row counts, so memory grants are
-     sized correctly and spills are less likely.
-   
-   - Fewer intermediates and sorts: no table variables with IDENTITY, no extra reordering;
-     we carry an Ordinal and order once at the end when needed.
-   
-   - Predicate pushdown: filters and projections on the split values can be pushed into
-     the inlined plan (not possible with the old TVF).
-   
-   Net: same results, deterministic pairing via Ordinal, lower CPU, and more stable plans.
-
------------------------------------------ */
-CREATE OR ALTER FUNCTION dbo.fnSplitString
-(
-    @DelimitedString NVARCHAR(MAX),
-    @Delimiter       NCHAR(1)
-)
-RETURNS TABLE
-AS
-RETURN
-WITH SourceText AS
-(
-    SELECT AdjustedString =
-        CASE
-            WHEN @DelimitedString IS NULL
-              OR @Delimiter IS NULL
-              OR @Delimiter = N''
-              OR LEN(@DelimitedString) = 0
-                THEN NULL                                  -- empty input => no rows
-            WHEN RIGHT(@DelimitedString, 1) = @Delimiter
-                THEN LEFT(@DelimitedString, LEN(@DelimitedString) - 1)  -- drop trailing delimiter
-            ELSE @DelimitedString
-        END
-)
-SELECT
-    Ordinal = CONVERT(INT, [key]) + 1,                    -- 1-based position
-    Value   = CONVERT(NVARCHAR(MAX), [value])             -- preserve whitespace like legacy
-FROM SourceText
-CROSS APPLY OPENJSON(
-    CASE
-        WHEN AdjustedString IS NULL THEN N'[]'
-        ELSE N'["' + REPLACE(AdjustedString, @Delimiter, N'","') + N'"]'
-    END
-);
-
-
-/* -----------------------------------------
-   Repro again, but join on Ordinal.
-   We STILL shuffle each side independently,
-   yet the pairing remains correct.
-   ----------------------------------------- */
-DECLARE @SelectedTickets      VARCHAR(MAX) = '';
-DECLARE @SelectedTicketsAmts  VARCHAR(MAX) = '';
-
-SET @SelectedTickets     = '403089039,403089041,403089040';
-SET @SelectedTicketsAmts = '50000000.00,50000000.00,10584205.00';
-
-
-;WITH TicketParts AS
-(
-    SELECT Ordinal, Ticket = TRY_CONVERT(INT, Value)
-    FROM dbo.fnSplitString(@SelectedTickets, N',')
+-- B) Recompute the proc’s "#TicketsDropped" candidate set (the ones it wants to DELETE)
+;WITH PledgeAgg AS (
+    SELECT
+        cusip,
+        ticket,
+        locationid,
+        acctcode,
+        SUM(originalface) AS originalface,
+        SUM(CASE WHEN pldgcode = 'Unpledged' THEN originalface ELSE 0 END) AS unpledgedamt,
+        SUM(CASE WHEN pldgcode = 'Unpledged' THEN 0 ELSE originalface END) AS pledgedamt
+    FROM dbo.vwPledgeTicketDtl
+    GROUP BY cusip, ticket, locationid, acctcode
 ),
-AmountParts AS
-(
-    SELECT Ordinal, Amount = TRY_CONVERT(DECIMAL(18,2), Value)
-    FROM dbo.fnSplitString(@SelectedTicketsAmts, N',')
+TicketHoldingSource AS (
+    SELECT
+        th.Ticket,
+        sa.SfkpId AS locationid,
+        th.SfkpAcctID,
+        th.TicketHeldBlk
+    FROM dbo.TicketHolding th
+    JOIN dbo.tblSfkpAcct sa ON sa.SfkpAcctID = th.SfkpAcctID
 )
 SELECT
-    TicketParts.Ordinal,
-    TicketParts.Ticket,
-    AmountParts.Amount
-FROM TicketParts
-JOIN AmountParts
-  ON TicketParts.Ordinal = AmountParts.Ordinal
-ORDER BY TicketParts.Ordinal;
+    d.cusip, d.ticket, d.locationid, d.acctcode,
+    d.originalface, d.pledgedamt, d.unpledgedamt,
+    s.TicketHeldBlk, s.SfkpAcctID
+INTO #ToRemove
+FROM PledgeAgg d
+LEFT JOIN TicketHoldingSource s
+       ON s.ticket = d.ticket AND s.locationid = d.locationid
+WHERE s.ticket IS NOT NULL      -- there is a holding row
+  AND ISNULL(d.pledgedamt,0) = 0;  -- the proc will try to DELETE these
 
-
-
+-- C) Which of those rows have children in TicketDtl (=> will fail)?
+SELECT r.*, COUNT(td.TicketDtlId) AS ChildRowCount
+FROM #ToRemove r
+JOIN dbo.TicketDtl td ON td.TicketHeldBlkId = r.TicketHeldBlk
+GROUP BY r.cusip, r.ticket, r.locationid, r.acctcode, r.originalface, r.pledgedamt, r.unpledgedamt, r.TicketHeldBlk, r.SfkpAcctID
+ORDER BY ChildRowCount DESC;
