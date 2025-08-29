@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TextToZip")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+0e40d5b9b116af206cfda24af1b8ceb47ce50272")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7bbe7654330d05df6576754fd7520a8255cf6595")]
 [assembly: System.Reflection.AssemblyProductAttribute("TextToZip")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TextToZip")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

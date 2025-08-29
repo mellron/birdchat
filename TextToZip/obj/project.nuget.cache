@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "8Rw3yo5kN0w=",
+  "dgSpecHash": "6Dh/RlZQ+Jc=",
   "success": true,
-  "projectFilePath": "/home/doug/Development/repos/utility_programs/TextToZip/TextToZip.csproj",
+  "projectFilePath": "/home/doug/Development/repos/birdchat/TextToZip/TextToZip.csproj",
   "expectedPackageFiles": [
     "/home/doug/.nuget/packages/microsoft.net.illink.tasks/9.0.4/microsoft.net.illink.tasks.9.0.4.nupkg.sha512",
     "/home/doug/.nuget/packages/microsoft.netcore.app.runtime.linux-x64/9.0.4/microsoft.netcore.app.runtime.linux-x64.9.0.4.nupkg.sha512",

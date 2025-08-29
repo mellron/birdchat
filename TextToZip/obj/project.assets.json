@@ -82,11 +82,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/doug/Development/repos/utility_programs/TextToZip/TextToZip.csproj",
+      "projectUniqueName": "/home/doug/Development/repos/birdchat/TextToZip/TextToZip.csproj",
       "projectName": "TextToZip",
-      "projectPath": "/home/doug/Development/repos/utility_programs/TextToZip/TextToZip.csproj",
+      "projectPath": "/home/doug/Development/repos/birdchat/TextToZip/TextToZip.csproj",
       "packagesPath": "/home/doug/.nuget/packages/",
-      "outputPath": "/home/doug/Development/repos/utility_programs/TextToZip/obj/",
+      "outputPath": "/home/doug/Development/repos/birdchat/TextToZip/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/home/doug/.nuget/NuGet/NuGet.Config"
