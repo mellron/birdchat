@@ -1,0 +1,38 @@
+/* ===== Treasury HDY157 (CMD) ===== */
+update_job: VCAUSC10MPRD01F.c_sql_trsy_i_hdy157
+description: "APL_Corp Treas Sys * Imp4;Urg4;EMT See ServiceNow Knowledgebase Article KB0122656"
+svcdesk_desc: "APL_Corp Treas Sys"
+
+update_job: VCAUSE25MPRD017.c_sql_trsy_i_hdy157
+description: "APL_Corp Treas Sys * Imp4;Urg4;EMT See ServiceNow Knowledgebase Article KB0122656"
+svcdesk_desc: "APL_Corp Treas Sys"
+
+/* ===== Treasury BSDR344 (CMD + FW) ===== */
+update_job: VCAUSC10MPRD01F.c_sql_trsy_i_bsdr344
+description: "APL_Corp Treas Sys * Imp2;Urg2;EMT See ServiceNow Knowledgebase Article KB0122673"
+svcdesk_desc: "APL_Corp Treas Sys"
+
+update_job: VCAUSC10MPRD01F.f_sql_trsy_i_bsdr344
+description: "APL_Corp Treas Sys * Imp4;Urg4;EMT See ServiceNow Knowledgebase Article KB0122673"
+svcdesk_desc: "APL_Corp Treas Sys"
+
+update_job: VCAUSE25MPRD017.c_sql_trsy_i_bsdr344
+description: "APL_Corp Treas Sys * Imp2;Urg2;EMT See ServiceNow Knowledgebase Article KB0122673"
+svcdesk_desc: "APL_Corp Treas Sys"
+
+update_job: VCAUSE25MPRD017.f_sql_trsy_i_bsdr344
+description: "APL_Corp Treas Sys * Imp4;Urg4;EMT See ServiceNow Knowledgebase Article KB0122673"
+svcdesk_desc: "APL_Corp Treas Sys"
+
+/* ===== Reset jobs (description only) ===== */
+update_job: VCAUSC10MPRD01F.c_sql_trsy_i_hdy157_rset
+description: "MR_Scheduling * Reset c_sql_trsy_i_hdy157 AutoSys Job KB0122656 * APL_Corp Treas Sys"
+
+update_job: VCAUSE25MPRD017.c_sql_trsy_i_hdy157_rset
+description: "MR_Scheduling * Reset c_sql_trsy_i_hdy157 AutoSys Job KB0122656 * APL_Corp Treas Sys"
+
+update_job: VCAUSC10MPRD01F.c_sql_trsy_i_bsdr344_rset
+description: "MR_Scheduling * Reset c_sql_trsy_i_bsdr344 AutoSys Job KB0122673 * APL_Corp Treas Sys"
+
+update_job: VCAUSE25MPRD017.c_sql_trsy_i_bsdr344_rset
+description: "MR_Scheduling * Reset c_sql_trsy_i_bsdr344 AutoSys Job KB0122673 * APL_Corp Treas Sys"
