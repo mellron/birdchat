@@ -8665,24 +8665,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</BinaryItem>
       DTS:ObjectName="Constraint 6"
       DTS:To="Package\Log - Trigger File Not Present"
       DTS:Value="2" />
-    <DTS:PrecedenceConstraint
-      DTS:refId="Package.PrecedenceConstraints[Constraint 1a]"
-      DTS:CreationName=""
-      DTS:DTSID="{A7B3F1E9-2D34-4D20-8C3D-1F9D66AE3C18}"
-      DTS:EvalOp="3"
-      DTS:Expression="@[User::IsExportReady]==True"
-      DTS:From="Package\Check for Trigger File"
-      DTS:LogicalAnd="True"
-      DTS:ObjectName="Constraint 1a"
-      DTS:To="Package\Annual Rates MRO DBC and DB2" />
-    <DTS:PrecedenceConstraint
-      DTS:refId="Package.PrecedenceConstraints[Constraint 4]"
-      DTS:CreationName=""
-      DTS:DTSID="{E3D3C4A9-5C71-4A7B-9DD5-6E5F8123B8F4}"
-      DTS:From="Package\Annual Rates MRO DBC and DB2"
-      DTS:LogicalAnd="True"
-      DTS:ObjectName="Constraint 4"
-      DTS:To="Package\Log - Finish" />
+    
   </DTS:PrecedenceConstraints>
   <DTS:EventHandlers>
     <DTS:EventHandler
