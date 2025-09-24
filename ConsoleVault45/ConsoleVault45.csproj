@@ -48,8 +48,8 @@
     <Compile Include="VaultAccess.cs">
       <Link>apiapp_net45\\VaultAccess.cs</Link>
     </Compile>
-    <Compile Include="HROPVaultAccess.cs">
-      <Link>apiapp_net45\\HROPVaultAccess.cs</Link>
+    <Compile Include="VaultAccessHelper.cs">
+      <Link>apiapp_net45\\VaultAccessHelper.cs</Link>
     </Compile>
   </ItemGroup>
   <ItemGroup>

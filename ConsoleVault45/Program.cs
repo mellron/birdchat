@@ -24,6 +24,8 @@ namespace ConsoleVault45
                 string keyName = args.Length >= 6 ? args[5] : null;
 
                 // Ensure TLS 1.2 for HTTPS
+                // Maybe add TLS 1.3 in future when .NET Framework supports it
+
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
 
                 string secretValue = FetchSecretValue(vaultUrl, secretName, carId, roleId, secretId, keyName);
@@ -45,7 +47,7 @@ namespace ConsoleVault45
         {
             string secretKeyName = string.IsNullOrEmpty(keyName) ? "TPIPassword" : keyName;
 
-            var vaultAccess = new HROPVaultAccess(vaultUrl, secretName, carId, roleId, secretId);
+            var vaultAccess = new VaultAccessHelper(vaultUrl, secretName, carId, roleId, secretId);
 
             string token = vaultAccess.GetToken().GetAwaiter().GetResult();
 
@@ -54,21 +56,7 @@ namespace ConsoleVault45
                 throw new Exception("Failed to acquire Vault token.");
             }
 
-            var secretResponse = vaultAccess.GetSecret(secretName).GetAwaiter().GetResult();
-
-            if (secretResponse == null || secretResponse.Data == null || secretResponse.Data.Secrets == null)
-            {
-                throw new Exception("Vault response did not contain any secret data.");
-            }
-
-            string secretValue;
-
-            if (!secretResponse.Data.Secrets.TryGetValue(secretKeyName, out secretValue))
-            {
-                throw new Exception("Secret key '" + secretKeyName + "' not found in Vault response.");
-            }
-
-            return secretValue;
+            return vaultAccess.GetSecret(secretName, secretKeyName).GetAwaiter().GetResult();
         }
     }
 }
