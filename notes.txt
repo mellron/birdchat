@@ -1,0 +1,3 @@
+Only the API layer calls HedgeReportSync. Inside HatService.Api/Controllers/Intraday/IntradayHedgeController.cs:62-73, when a posted hedge event has status “EFFECTIVE”, the controller looks up the
+  CalypsoIntradayHedge:HedgeReportSync URL from configuration (see HatService.Api/appsettings*.json:12), builds a HedgeReportSyncRequest (HatService.Models/Intraday/HedgeReportSyncRequest.cs:5), and issues the HTTP
+  POST via _apiService. The React hat-client never references that endpoint, so the call originates solely from the backend during intraday-event processing.
