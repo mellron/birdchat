@@ -1,0 +1,25 @@
+> - In SQL Server you can clear the conflicting rows yourself before rerunning the task. First confirm which processing month has data:
+
+    SELECT ProcessMonth, COUNT(*) AS RowCount
+    FROM dbo.MonthlyPrepaymentsCharges
+    GROUP BY ProcessMonth
+    ORDER BY ProcessMonth DESC;
+  - If you’re happy to wipe that month, run the delete inside a transaction so you can verify before committing:
+
+    BEGIN TRAN;
+
+    DELETE FROM dbo.MonthlyPrepaymentsCharges
+    WHERE ProcessMonth = '2025-09-01';    -- substitute the month you need
+
+    SELECT COUNT(*) AS Remaining
+    FROM dbo.MonthlyPrepaymentsCharges
+    WHERE ProcessMonth = '2025-09-01';
+
+    COMMIT;   -- or ROLLBACK if the row count isn’t what you expect
+  - Alternatively, call the same stored procedure the UI uses but pass the flag that allows it to delete, which prevents the “clear existing charges” error:
+
+    EXEC dbo.DeleteMonthlyPrepaymentsCharges @clearExistingCharges = 1;
+
+    That procedure computes the target ProcessMonth from the database server’s current date and deletes the rows (BSDRate_Database.sql:14156). Use this only if the server’s current date matches the month
+  you want to clear.
+  - After clearing the rows, rerun the Calculate Monthly Charges process (with or without the UI checkbox); it will now proceed without the red status.
