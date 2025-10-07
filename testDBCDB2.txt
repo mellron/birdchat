@@ -1,0 +1,62 @@
+1) Fast yes/no existence check
+
+DECLARE @d date = '2025-09-17';
+
+IF EXISTS (
+    SELECT 1
+    FROM ExportRateValues erv
+    JOIN ExportRateDefinitions erd ON erd.ExportRateID = erv.ExportRateID
+    JOIN LExportTypes et ON et.IID = erd.ExportTypeID AND et.Code IN ('DBC','DB2')
+    JOIN CalculatedRateDefinitions crd ON crd.CalculatedRateID = erd.BaseRateID
+    JOIN LCurrencies c ON c.IID = crd.CurrencyID
+    JOIN dbo.udfGetDailyCurveMROShortNameList() s ON s.ShortName = erd.ShortName
+    WHERE erv.ExportDate = @d
+)
+    SELECT 'Records exist for ' + CONVERT(varchar(10), @d, 101) AS Status;
+ELSE
+    SELECT 'No records for ' + CONVERT(varchar(10), @d, 101) AS Status;
+
+
+2) How many rows (and by currency)?
+
+DECLARE @d date = '2025-09-17';
+
+-- total rows that match the proc's filters
+SELECT COUNT(*) AS RowCount
+FROM ExportRateValues erv
+JOIN ExportRateDefinitions erd ON erd.ExportRateID = erv.ExportRateID
+JOIN LExportTypes et ON et.IID = erd.ExportTypeID AND et.Code IN ('DBC','DB2')
+JOIN CalculatedRateDefinitions crd ON crd.CalculatedRateID = erd.BaseRateID
+JOIN LCurrencies c ON c.IID = crd.CurrencyID
+JOIN dbo.udfGetDailyCurveMROShortNameList() s ON s.ShortName = erd.ShortName
+WHERE erv.ExportDate = @d;
+
+-- breakdown by currency
+SELECT c.Code AS Currency, COUNT(*) AS RowCount
+FROM ExportRateValues erv
+JOIN ExportRateDefinitions erd ON erd.ExportRateID = erv.ExportRateID
+JOIN LExportTypes et ON et.IID = erd.ExportTypeID AND et.Code IN ('DBC','DB2')
+JOIN CalculatedRateDefinitions crd ON crd.CalculatedRateID = erd.BaseRateID
+JOIN LCurrencies c ON c.IID = crd.CurrencyID
+JOIN dbo.udfGetDailyCurveMROShortNameList() s ON s.ShortName = erd.ShortName
+WHERE erv.ExportDate = @d
+GROUP BY c.Code
+ORDER BY c.Code;
+
+3) Quick peek at a few rows that should feed the proc
+
+DECLARE @d date = '2025-09-17';
+
+SELECT TOP (20)
+    c.Code AS Currency,
+    erv.RateDate,
+    erd.ShortName,
+    erv.Value
+FROM ExportRateValues erv
+JOIN ExportRateDefinitions erd ON erd.ExportRateID = erv.ExportRateID
+JOIN LExportTypes et ON et.IID = erd.ExportTypeID AND et.Code IN ('DBC','DB2')
+JOIN CalculatedRateDefinitions crd ON crd.CalculatedRateID = erd.BaseRateID
+JOIN LCurrencies c ON c.IID = crd.CurrencyID
+JOIN dbo.udfGetDailyCurveMROShortNameList() s ON s.ShortName = erd.ShortName
+WHERE erv.ExportDate = @d
+ORDER BY c.Code, erd.ShortName;
