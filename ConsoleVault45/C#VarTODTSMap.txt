@@ -1,0 +1,8 @@
+I maC# Code   DTS Varable
+vaultURL = HashiCorpVaultURL
+secretName = HashiSecretName
+carId = CarID // will just hardcode this in varable .
+roleID = HashiCorpRoleID *
+keyName = HashiCorpKeyName *
+version = HashiCorpVersion *
+envVarName = HashiCorpEnvVarable *

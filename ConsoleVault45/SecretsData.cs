@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.Serialization;
 
 namespace apiapp.Vault
@@ -7,17 +6,30 @@ namespace apiapp.Vault
     [DataContract]
     public class SecretsData
     {
+        // This maps to the inner "data" object in the Vault response
         [DataMember(Name = "data")]
-        public Dictionary<string, string> Secrets { get; set; }
+        public SecretValues SecretValues { get; set; }
 
         [DataMember(Name = "metadata")]
         public Metadata Metadata { get; set; }
     }
 
     [DataContract]
+    public class SecretValues
+    {
+        [DataMember(Name = "certpassphrase")]
+        public string CertPassphrase { get; set; }
+
+        [DataMember(Name = "key")]
+        public string Key { get; set; }
+
+        [DataMember(Name = "secret")]
+        public string Secret { get; set; }
+    }
+
+    [DataContract]
     public class Metadata
     {
-        // Use string for broad compatibility with JSON date formats on .NET 4.5
         [DataMember(Name = "created_time")]
         public string CreatedTime { get; set; }
 
@@ -65,7 +77,6 @@ namespace apiapp.Vault
         public string MountType { get; set; }
     }
 
-    // Used for auth/login response when exchanging role_id + secret_id for a client_token
     [DataContract]
     internal class LoginResponse
     {

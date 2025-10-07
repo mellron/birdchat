@@ -42,15 +42,19 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="SSIS.cs" />
     <Compile Include="SecretsData.cs">
       <Link>apiapp_net45\\SecretsData.cs</Link>
     </Compile>
+    <Compile Include="SecretsData.cs" />
     <Compile Include="VaultAccess.cs">
       <Link>apiapp_net45\\VaultAccess.cs</Link>
     </Compile>
+    <Compile Include="VaultAccess.cs" />
     <Compile Include="VaultAccessHelper.cs">
       <Link>apiapp_net45\\VaultAccessHelper.cs</Link>
     </Compile>
+    <Compile Include="VaultAccessHelper.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />

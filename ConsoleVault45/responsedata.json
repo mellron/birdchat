@@ -1,0 +1,24 @@
+{
+    "request_id": "a8aa4fe3-e390-16f5-e7e3-18561a713d10",
+    "lease_id": "",
+    "renewable": false,
+    "lease_duration": 0,
+    "data": {
+        "data": {
+            "certpassphrase": "ISU_API_User",
+            "key": "xxxxxxxxxxxxxxxxxxxxxxx",
+            "secret": "xxxxxxxxxxxxxxxxxxxx"
+        },
+        "metadata": {
+            "created_time": "2025-09-23T13:15:05.960790124Z",
+            "custom_metadata": null,
+            "deletion_time": "",
+            "destroyed": false,
+            "version": 2
+        }
+    },
+    "wrap_info": null,
+    "warnings": null,
+    "auth": null,
+    "mount_type": "kv"
+}

@@ -1,0 +1,7 @@
+HashiCorpVaultURL = "https://hashicorp-vault-test.us.bank-dns.com"
+secretName = "dev/workaytpigl"
+carId = "2509"
+roleID = "9ce637ff-78b2-6159-cb95-595e2ec401c5"
+keyName= "secret"
+version = "2"
+envVarName = "APP_2509_ENV"

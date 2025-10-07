@@ -47,6 +47,12 @@ namespace apiapp.Vault
             set { carID = value; }
         }
 
+        public int Version
+        {
+            get; set;
+        } = 1;
+
+
         public VaultAccess()
         {
         }
@@ -75,6 +81,8 @@ namespace apiapp.Vault
             using (var client = new HttpClient())
             {
                 string secretPath = string.Format("/v1/secret/data/{0}", SecretName);
+
+                secretPath += $"?version=" + Version.ToString();
 
                 client.BaseAddress = new Uri(vaultAddress);
                 client.DefaultRequestHeaders.Accept.Clear();
