@@ -2,7 +2,7 @@ USE BSDRate;
 GO
 
 /*
-    ExportRateCalendar_PopulationDynamicSQL.sql
+    `.sql
 
     Purpose: Generate portable INSERT statements for ExportRateCalendar rows so
              the data can be replayed in another environment. Rows are matched
