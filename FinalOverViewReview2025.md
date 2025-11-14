@@ -2,7 +2,7 @@
 
 ## Full Overall Performance Summary
 
-This year I supported several important treasury and financial systems, including BSDRate, TPI, OPI cross-application services, Fedline Advantage, and Aladdin. Except for Treasury Rate Tool, all of these systems were new to me. I had to learn how each one worked while still completing the task. With no documentation and fully custom code, I learned by working with my team (20%), working with my business partner (20%), and doing the majority of the learning on my own (60%). Even with this challenge, I was able to deliver steady results all year.
+This year I supported several important treasury and financial systems, including BSDRate, TPI, OPI cross-application services, Fedline Advantage, and Aladdin. Except for Treasury Rate Tool, all of these systems were new to me. I had to learn how each one worked while still completing the task.  I learned by working with my team (20%), working with my business partner (20%), and doing the majority of the learning on my own (60%). Even with this challenge, I was able to deliver steady results all year.
 
 My largest area of work was BSDRate, where I helped maintain and improve daily rate processes and related jobs. I also completed work across TPI and other shared systems to keep data flowing correctly between applications. I fixed defects, improved controls, and supported production issues to help keep our systems stable and reliable.
 
