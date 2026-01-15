@@ -1,0 +1,2796 @@
+﻿
+
+'******************************************************************************
+'BSD Rate UI project
+'Copyright © 2011 U.S. Bancorp
+'This source file contains the class for the Calculators form.
+' =============================================================================
+'
+'Used By: BSD Rate
+'
+'Created by: jrhald
+'Created when: 10/17/2011
+'Modifications:
+'
+'Date       By              Reason/What changed
+'--------   ---------       -------------------
+'01/12/12   jrhald          Changed calculations for Spread and All-In Cust. Rate
+'                           to use COF if All-In COF has not been calculated (for
+'                           CIP calculator, use CIP Rate).
+'03/02/2012 jrhald          Straightend up controls that somehow got moved about.
+'03/12/2012 jrhald          CPR rate curves used to be stored as the rate (i.e 17.05%
+'                           was stored as 17.05), now we are storing as .1705, so
+'                           the display of CPR needed to be changed accordingly.
+'03/14/12   jrhald          Now that CPR rates a stored differently, need to round
+'                           resulting rate to 8, not 6.
+'03/30/12   jrhald          Modified InputType on Residual text box so that decimal
+'                           points are excepted. Also added on leave events for all
+'                           text boxes (excpet P&I) to simulat enter key press.
+'04/03/12   jrhald          Modified how the Irregular Cash Flows form is loaded
+'                           so that only one instance would exist at a time, and
+'                           also to pass the rate date selected on this form.
+'04/11/12   jrhald          Months to first interest and principal text boxes were
+'                           not becoming enabled when they should - this was related to
+'                           recent change to support re-calc on tabbing out of control.
+'04/18/12   jrhald          Modifications to CalculateCIP() to support changes to business
+'                           rules in CIPRateCalculator class.
+'05/14/12   jrhald          Changed display of forward cof and waiver cof on FTP and CIP
+'                           calculators to show percent rather than basis point whole number.
+'07/27/12   jrhald          Recently, treasury text boxes were modified to simulate tab key
+'                           press when pressing enter, however, because of OnEnterKeyPress
+'                           events, this was causing recalculation to occurr twice when
+'                           user pressed enter.
+'11/30/12   jrhald          Merged in changes from BSDRatePatch branch.
+'01/17/13   lspetee         Added Interest Only Field for CIP Rate Calculator
+'07/01/13   kakuusinen      Added a line in "LoadIrregularForm" to send the value 0 (zero)
+'                           to the IrregularCashFlowRateLock form.  Issue 1.
+'04/23/2014 D. Weeks        Replace changes to Irregular Cash flow that were backed out for phase III (Back to Source Safe version 52)
+'06/30/14   jrhald          Added logging for exceptions for issue #565.
+'10/03/2024 detolle         Addeding 306 Curves tab to the Calculators form.
+'07/09/2025 detolle         TPP-7119 detolle - initial implementation for CIP360 curve support
+'*****************************************************************************/
+Option Explicit On
+Option Strict On
+
+Imports System.Math
+Imports BSDRateBusiness
+Imports BSDRateBusiness.FTPRateCalculatorValidationResponse
+Imports BSDRateBusiness.CIPRateCalculatorValidationResponse
+Imports BSDRateBusiness.ALSRateCalculatorValidationResponse
+Imports BSDRateBusiness.PIPaymentCalculatorValidationResponse
+Imports BSDRateBusiness.FHLBCredit360CalculatorValidationResponse
+Imports TreasuryFormsControls.Treasury.FormsControls
+
+Public Class CalculatorsForm
+    Private _formLoading As Boolean = False
+    Private _rateDTPOpen As Boolean = False
+    Private _tbFocused As Boolean = False
+    Private _irregularCashFlowsDT As DataTable = Nothing
+
+    ''' <summary>
+    ''' Defines each tab on the Calculators form.
+    ''' </summary>
+    ''' <remarks>
+    ''' This is used mainly as a parameter for functions that are common to all
+    ''' calculators. The term 'tab' on this form can be considered synonomous
+    ''' with calculator.
+    ''' </remarks>
+    Private Enum CalculatorsTab
+        FTP = 1
+        CIP = 2
+        ALS = 3
+        PI = 4
+        FTPH = 5
+        FHLBC360 = 6
+    End Enum
+
+#Region "Common Methods"
+    ''' <summary>
+    ''' Sets (or resets) default values for input and output textbox controls.
+    ''' </summary>
+    ''' <param name="tab">The tab for which to set input default values.</param>
+    ''' <remarks>
+    ''' Note that (re)setting the rate date here causes a (re)calculation. This is
+    ''' the desired behaviour. Also see <seealso>CalculatorsTab</seealso> enum.
+    ''' </remarks>
+    Private Sub SetDefaultValues(ByVal tab As CalculatorsTab)
+        Try
+            Dim parentWindow As InitialDisplay = DirectCast(Me.ParentForm, InitialDisplay)
+
+            ' Defaults by tab.
+            Select Case tab
+                Case CalculatorsTab.FTP
+                    FTPAccrualBasisComboBox.SelectedIndex =
+                        parentWindow.LAccuralBasis.Rows.IndexOf(parentWindow.LAccuralBasis.Select("DefaultFlag=1").FirstOrDefault())
+                    FTPAmortizationTypeComboBox.SelectedIndex =
+                        parentWindow.LFTPAmortizationType.Rows.IndexOf(parentWindow.LFTPAmortizationType.Select("DefaultFlag=1").FirstOrDefault())
+                    FTPInterestFrequencyComboBox.SelectedIndex =
+                        parentWindow.LFTPPaymentFrequency.Rows.IndexOf(parentWindow.LFTPPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+                    FTPPrincipalFrequencyComboBox.SelectedIndex =
+                        parentWindow.LFTPPaymentFrequency.Rows.IndexOf(parentWindow.LFTPPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+                    FTPPrepaymentWaiverComboBox.SelectedIndex =
+                        parentWindow.LFTPPrepaymentWaiver.Rows.IndexOf(parentWindow.LFTPPrepaymentWaiver.Select("DefaultFlag=1").FirstOrDefault())
+
+                    FTPTermTextBox.Text = "60"
+                    FTPAmortizationTextBox.Text = "60"
+                    FTPInterestOnlyTextBox.Text = "0"
+                    FTPForwardTextBox.Text = "0"
+                    FTPResidualTextBox.Text = "0"
+
+                    FTPCOFResultTextBox.Text = ""
+                    FTPForwardResultTextBox.Text = ""
+                    FTPWaiverResultTextBox.Text = ""
+                    FTPAllInCOFResultTextBox.Text = ""
+                    FTPSpreadTextBox.Text = ""
+                    FTPAllInCustRateTextBox.Text = ""
+
+                    ' Disable months to first payment controls.
+                    ToggleMosToFirstPayment(False, False)
+                Case CalculatorsTab.CIP
+                    CIPPrepaymentWaiverComboBox.SelectedIndex =
+                        parentWindow.LFTPPrepaymentWaiver.Rows.IndexOf(parentWindow.LFTPPrepaymentWaiver.Select("DefaultFlag=1").FirstOrDefault())
+
+                    CIPTermTextBox.Text = "180"
+                    CIPAmortizationTextBox.Text = "360"
+                    CIPInterestOnlyTextBox.Text = "0"
+                    CIPForwardTextBox.Text = "0"
+
+                    CIPRateResultTextBox.Text = ""
+                    CIPForwardResultTextBox.Text = ""
+                    CIPAllInCOFResultTextBox.Text = ""
+                    CIPSpreadTextBox.Text = ""
+                    CIPAllInCustRateTextBox.Text = ""
+                    CIPAccrualBasisComboBox.SelectedIndex =
+                        parentWindow.LAccuralBasis.Rows.IndexOf(parentWindow.LAccuralBasis.Select("DefaultFlag=1").FirstOrDefault())
+                    CIPAmortizationTypeComboBox.SelectedIndex =
+                        parentWindow.LFTPAmortizationType.Rows.IndexOf(parentWindow.LFTPAmortizationType.Select("DefaultFlag=1").FirstOrDefault())
+                    CIPInterestFrequencyComboBox.SelectedIndex =
+                        parentWindow.LFTPPaymentFrequency.Rows.IndexOf(parentWindow.LFTPPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+                    CIPPrincipalFrequencyComboBox.SelectedIndex =
+                        parentWindow.LFTPPaymentFrequency.Rows.IndexOf(parentWindow.LFTPPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+                Case CalculatorsTab.ALS
+                    ALSConsumerLoanTypeComboBox.SelectedIndex =
+                        parentWindow.LConsumerLoanType.Rows.IndexOf(parentWindow.LConsumerLoanType.Select("DefaultFlag=1").FirstOrDefault())
+
+                    ALSTermTextBox.Text = "60"
+                    ALSAmortizationTextBox.Text = "60"
+
+                    ALSCOFResultTextBox.Text = ""
+                    ALSOptionCostResultTextBox.Text = ""
+                    ALSAllInCOFResultTextBox.Text = ""
+                    ALSCPRResultTextBox.Text = ""
+                    ALSSpreadTextBox.Text = ""
+                    ALSAllInCustRateTextBox.Text = ""
+                Case CalculatorsTab.PI
+                    PICalcControl.Reset()
+                Case CalculatorsTab.FTPH
+                    FTPHistTermTreasuryTextBox.Text = "60"
+                    FTPHistAmortTreasuryTextBox.Text = "60"
+
+                    FTPHistAccrualBasisTreasuryComboBox.SelectedIndex =
+                        parentWindow.LAccuralBasis.Rows.IndexOf(parentWindow.LAccuralBasis.Select("DefaultFlag=1").FirstOrDefault())
+                    FTPHistAmortTypeTreasuryComboBox.SelectedIndex =
+                        parentWindow.LAmortizationType.Rows.IndexOf(parentWindow.LAmortizationType.Select("DefaultFlag=1").FirstOrDefault())
+                    FTPHistIntFreqTreasuryComboBox.SelectedIndex =
+                        parentWindow.LFTPPaymentFrequency.Rows.IndexOf(parentWindow.LFTPPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+                    FTPHistPrinFreqTreasuryComboBox.SelectedIndex =
+                        parentWindow.LFTPPaymentFrequency.Rows.IndexOf(parentWindow.LFTPPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+
+                    FTPHistAutoGridControl.Rows.Clear()
+                Case CalculatorsTab.FHLBC360
+                    FHLB360AccrualBasisComboBox.SelectedIndex =
+                        parentWindow.LAccuralBasis.Rows.IndexOf(parentWindow.LAccuralBasis.Select("DefaultFlag=1").FirstOrDefault())
+                    FHLB360AmortizationTypeComboBox.SelectedIndex =
+                        parentWindow.LFTPAmortizationType.Rows.IndexOf(parentWindow.LFTPAmortizationType.Select("DefaultFlag=1").FirstOrDefault())
+                    FHLB360InterestFrequencyComboBox.SelectedIndex =
+                        parentWindow.LFTPPaymentFrequency.Rows.IndexOf(parentWindow.LFTPPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+                    FHLB360PrincipalFrequencyComboBox.SelectedIndex =
+                        parentWindow.LFTPPaymentFrequency.Rows.IndexOf(parentWindow.LFTPPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+                    FHLB360PrepaymentWaiverComboBox.SelectedIndex =
+                        parentWindow.LFTPPrepaymentWaiver.Rows.IndexOf(parentWindow.LFTPPrepaymentWaiver.Select("DefaultFlag=1").FirstOrDefault())
+                    FHLB360TermTextBox.Text = "60"
+                    FHLB360AmortizationTextBox.Text = "60"
+                    FHLB360InterestOnlyTextBox.Text = "0"
+                    FHLB360ForwardTextBox.Text = "0"
+                    FHLB360ResidualTextBox.Text = "0"
+                    FHLB360COFResultTextBox.Text = ""
+                    FHLB360ForwardResultTextBox.Text = ""
+                    FHLB360WaiverResultTextBox.Text = ""
+                    FHLB360AllInCOFResultTextBox.Text = ""
+                    FHLB360SpreadTextBox.Text = ""
+                    FHLB360AllInCustRateTextBox.Text = ""
+            End Select
+
+            ' Common reset for all tabs. Do this last because it's going to
+            ' trigger a (re)calculation.
+            If Not (_formLoading) Then
+                RateDateTreasuryDateTimePicker.Value = Date.Now
+            End If
+            HistoricalLabel.Visible = False
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error ocurred while setting default input values:" + Environment.NewLine + ex.Message,
+                                "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Clears control (text boxes, combo boxes) states by resetting them to
+    ''' their "Normal" state.
+    ''' </summary>
+    ''' <param name="tab">The tab for which to clear control states.</param>
+    ''' <remarks>
+    ''' Also see <seealso>CalculatorsTab</seealso>, <seealso>TreasuryTextBox</seealso>,
+    ''' and <seealso>TreasuryComboBox</seealso>.
+    ''' </remarks>
+    Private Sub ClearControlStates(ByVal tab As CalculatorsTab)
+        Try
+            Dim panel As TableLayoutPanel = Nothing
+            Dim group As GroupBox = Nothing
+
+            Select Case tab
+                Case CalculatorsTab.FTP
+                    panel = FTPInputsTableLayoutPanel
+                    group = FTPResultsGroupBox
+                Case CalculatorsTab.CIP
+                    panel = CIPInputsTableLayoutPanel
+                    group = CIPResultsGroupBox
+                Case CalculatorsTab.ALS
+                    panel = ALSInputsTableLayoutPanel
+                    group = ALSResultsGroupBox
+                Case CalculatorsTab.PI
+                    PICalcControl.ClearControlStates()
+                    ' There is no results group box for P & I calculator
+                Case CalculatorsTab.FTPH
+                    panel = FTPHistTableLayoutPanel
+                    ' There is no results group box for FTP historical calculator
+                Case CalculatorsTab.FHLBC360
+                    panel = FHLB360InputsTableLayoutPanel
+                    group = FHLB360ResultsGroupBox
+            End Select
+
+            ' Clear states on input controls.
+            If (panel IsNot Nothing) AndAlso (panel.Controls IsNot Nothing) Then
+                For Each ctrl As Control In panel.Controls
+                    If (TypeOf ctrl Is TreasuryTextBox) Then
+                        Dim ttb As TreasuryTextBox = DirectCast(ctrl, TreasuryTextBox)
+                        ttb.Tooltip = ""
+                        ttb.InputState = InputState.Normal
+                    ElseIf (TypeOf ctrl Is TreasuryComboBox) Then
+                        Dim tcb As TreasuryComboBox = DirectCast(ctrl, TreasuryComboBox)
+                        tcb.Tooltip = ""
+                        tcb.InputState = InputState.Normal
+                    End If
+                Next
+            End If
+
+            ' Clear states on output controls.
+            If (group IsNot Nothing) AndAlso (group.Controls IsNot Nothing) Then
+                For Each ctrl As Control In group.Controls
+                    If (TypeOf ctrl Is TreasuryTextBox) Then
+                        Dim ttb As TreasuryTextBox = DirectCast(ctrl, TreasuryTextBox)
+                        ttb.Tooltip = ""
+                        ttb.InputState = InputState.Normal
+                    End If
+                Next
+            End If
+
+            RateDateTreasuryDateTimePicker.InputState = InputState.Normal
+            RateDateTreasuryDateTimePicker.Tooltip = ""
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error ocurred while clearing input states:" + Environment.NewLine + ex.Message,
+                              "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Clear the textbox values in the Results section.
+    ''' </summary>
+    ''' <param name="tab">The tab for which to clear outputs.</param>
+    ''' <remarks>
+    ''' Also see <seealso>CalculatorsTab</seealso> enum.
+    ''' </remarks>
+    Private Sub ClearResults(ByVal tab As CalculatorsTab)
+        Try
+            Select Case tab
+                Case CalculatorsTab.FTP
+                    FTPCOFResultTextBox.Text = ""
+                    FTPForwardResultTextBox.Text = ""
+                    FTPWaiverResultTextBox.Text = ""
+                    FTPAllInCOFResultTextBox.Text = ""
+                    FTPSpreadTextBox.Text = ""
+                    FTPAllInCustRateTextBox.Text = ""
+                    FTPRateDateWarningLabel.Text = ""
+                Case CalculatorsTab.CIP
+                    CIPRateResultTextBox.Text = ""
+                    CIPForwardResultTextBox.Text = ""
+                    CIPWaiverResultTextBox.Text = ""
+                    CIPAllInCOFResultTextBox.Text = ""
+                    CIPSpreadTextBox.Text = ""
+                    CIPAllInCustRateTextBox.Text = ""
+                    CIPRateDateWarningLabel.Text = ""
+                Case CalculatorsTab.ALS
+                    ALSCOFResultTextBox.Text = ""
+                    ALSOptionCostResultTextBox.Text = ""
+                    ALSAllInCOFResultTextBox.Text = ""
+                    ALSCPRResultTextBox.Text = ""
+                    ALSSpreadTextBox.Text = ""
+                    ALSAllInCustRateTextBox.Text = ""
+                    ALSRateDateWarningLabel.Text = ""
+                Case CalculatorsTab.PI
+                    ' Not applicable to PICalculatorControl.
+                Case CalculatorsTab.FTPH
+                    ' Not applicable to FTP history calculator.
+                Case CalculatorsTab.FHLBC360
+                    FHLB360COFResultTextBox.Text = ""
+                    FHLB360ForwardResultTextBox.Text = ""
+                    FHLB360WaiverResultTextBox.Text = ""
+                    FHLB360AllInCOFResultTextBox.Text = ""
+                    FHLB360SpreadTextBox.Text = ""
+                    FHLB360AllInCustRateTextBox.Text = ""
+                    FHLB360RateDateWarningLabel.Text = ""
+
+            End Select
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error ocurred while clearing outputs:" + Environment.NewLine + ex.Message,
+                                "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Displays a message to users when rates for a date other than requested
+    ''' date are used in calculations.
+    ''' </summary>
+    ''' <param name="tab">The tab on which to display the warning message.</param>
+    ''' <param name="rateDate">The actual rate date used for calculations.</param>
+    ''' <remarks></remarks>
+    Private Sub DisplayRateDateWarning(ByVal tab As CalculatorsTab, ByVal rateDate As Date)
+        Try
+            Dim label As Label = Nothing
+            Select Case tab
+                Case CalculatorsTab.FTP
+                    label = FTPRateDateWarningLabel
+                Case CalculatorsTab.CIP
+                    label = CIPRateDateWarningLabel
+                Case CalculatorsTab.ALS
+                    label = ALSRateDateWarningLabel
+                Case CalculatorsTab.FHLBC360
+                    label = FHLB360RateDateWarningLabel
+
+            End Select
+
+            If (label IsNot Nothing) Then
+                Dim msg As String = "Note: Rates were not found for requested rate date. Calculations were " +
+                                    "made with rates from " + rateDate.ToString("MM/dd/yyyy") + " instead."
+                label.Text = msg
+            End If
+
+            RateDateTreasuryDateTimePicker.InputState = InputState.Warning
+            RateDateTreasuryDateTimePicker.Tooltip = "Rates not found for requested rate date."
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            Throw
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Display a general warning message that does not apply to any particular control.
+    ''' </summary>
+    ''' <param name="tab"></param>
+    ''' <param name="message"></param>
+    ''' <remarks></remarks>
+    Private Sub DisplayWarning(ByVal tab As CalculatorsTab, ByVal message As String)
+        Try
+            Dim label As Label = Nothing
+            Select Case tab
+                Case CalculatorsTab.FTP
+                    label = FTPRateDateWarningLabel
+                Case CalculatorsTab.CIP
+                    label = CIPRateDateWarningLabel
+                Case CalculatorsTab.ALS
+                    label = ALSRateDateWarningLabel
+                Case CalculatorsTab.FHLBC360
+                    label = FHLB360RateDateWarningLabel
+
+            End Select
+
+            If (label IsNot Nothing) Then
+                label.Text = message
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            Throw
+        End Try
+    End Sub
+#End Region
+
+#Region "FHLBC360Rate Methods"
+    ''' <summary>
+    ''' Enables or disables the months to first interest payment and months to first principal
+    ''' payment controls for the FHLBC360 calculator based on specified flags.
+    ''' </summary>
+    ''' <param name="intEnabled">
+    ''' A boolean value specifying whether to enable the months to first interest payment controls.
+    ''' </param>
+    ''' <param name="prinEnabled">
+    ''' A boolean value specifying whether to enable the months to first principal payment controls.
+    ''' </param>
+    Private Sub ToggleMosToFirstPaymentFHLBC360(ByVal intEnabled As Boolean, ByVal prinEnabled As Boolean)
+        Try
+            ' Enable/Disable the interest payment controls.
+            FHLB360InterestFrequencyLabel.Enabled = intEnabled
+            FHLB360MosToFirstIntPmtTextBox.Enabled = intEnabled
+            FHLB360MosToFirstIntPmtTextBox.Text = If(intEnabled, FHLB360MosToFirstIntPmtTextBox.Text, String.Empty)
+
+            ' Enable/Disable the principal payment controls.
+            FHLB360PrincipalFrequencyLabel.Enabled = prinEnabled
+            FHLB360MosToFirstPrinPmtTextBox.Enabled = prinEnabled
+            FHLB360MosToFirstPrinPmtTextBox.Text = If(prinEnabled, FHLB360MosToFirstPrinPmtTextBox.Text, String.Empty)
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while enabling/disabling FHLBC360 months to first payment controls:" + Environment.NewLine + ex.Message,
+                             "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+
+    ''' <summary>
+    ''' Performs simple form-level validation of input controls for the FHLBC360 calculator.
+    ''' </summary>
+    ''' <returns>True if validation was successful, otherwise False.</returns>
+    Private Function ValidateFHLBC360Inputs() As Boolean
+        Try
+            Dim valid As Boolean = True
+
+            ' Clear input states and any user messages before validating.
+            ClearControlStates(CalculatorsTab.FHLBC360)
+            ClearResults(CalculatorsTab.FHLBC360)
+
+            ' We can't do normal calculations if Irregular amortization type is selected.
+            If (FHLB360AmortizationTypeComboBox.SelectedValue.ToString().Equals("I")) Then
+                IrregularButton.Visible = True
+                DisplayWarning(CalculatorsTab.FHLBC360, "Normal calculations cannot be performed for irregular amortization. Use the button next to Amortization Type to load the Irregular Cash Flows form.")
+                Return False
+            Else
+                IrregularButton.Visible = False
+            End If
+
+            ' Term is required and must be a valid integer.
+            Try
+                Int32.Parse(FHLB360TermTextBox.Text)
+            Catch ex As FormatException
+                FHLB360TermTextBox.InputState = InputState.Error
+                FHLB360TermTextBox.Tooltip = "The value specified for Term is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FHLB360TermTextBox.InputState = InputState.Error
+                FHLB360TermTextBox.Tooltip = "The value specified for Term is too large."
+                valid = False
+            End Try
+
+            ' Amortization is required and must be a valid integer.
+            Try
+                Int32.Parse(FHLB360AmortizationTextBox.Text)
+            Catch ex As FormatException
+                FHLB360AmortizationTextBox.InputState = InputState.Error
+                FHLB360AmortizationTextBox.Tooltip = "The value specified for Amortization is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FHLB360AmortizationTextBox.InputState = InputState.Error
+                FHLB360AmortizationTextBox.Tooltip = "The value specified for Amortization is too large."
+                valid = False
+            End Try
+
+            ' Interest Only is optional, but if specified must be a valid integer.
+            Try
+                If Not (FHLB360InterestOnlyTextBox.Text.Equals(String.Empty)) Then
+                    Int32.Parse(FHLB360InterestOnlyTextBox.Text)
+                End If
+            Catch ex As FormatException
+                FHLB360InterestOnlyTextBox.InputState = InputState.Error
+                FHLB360InterestOnlyTextBox.Tooltip = "The value specified for Interest Only is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FHLB360InterestOnlyTextBox.InputState = InputState.Error
+                FHLB360InterestOnlyTextBox.Tooltip = "The value specified for Interest Only is too large."
+                valid = False
+            End Try
+
+            ' Forward is optional, but if specified must be a valid integer.
+            Try
+                If Not (FHLB360ForwardTextBox.Text.Equals(String.Empty)) Then
+                    Int32.Parse(FHLB360ForwardTextBox.Text)
+                End If
+            Catch ex As FormatException
+                FHLB360ForwardTextBox.InputState = InputState.Error
+                FHLB360ForwardTextBox.Tooltip = "The value specified for Forward is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FHLB360ForwardTextBox.InputState = InputState.Error
+                FHLB360ForwardTextBox.Tooltip = "The value specified for Forward is too large."
+                valid = False
+            End Try
+
+            Return valid
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while validating FHLBC360 inputs:" + Environment.NewLine + ex.Message,
+                                  "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Validate inputs before loading the Irregular Cash Flows form for FHLBC360.
+    ''' </summary>
+    ''' <returns>True if inputs are valid, otherwise False.</returns>
+    ''' <remarks>
+    ''' This is called when the user has selected Irregular as the amortization type for FHLBC360.
+    ''' </remarks>
+    Private Function ValidateFHLBC360Irregular() As Boolean
+        Try
+            Dim mosToFirstPrinPmtReq As Boolean = False
+            Dim valid As Boolean = True
+
+            ' If a principal frequency other than monthly is selected, the user
+            ' must enter the number of months to first payment.
+            If (FHLB360PrincipalFrequencyComboBox.SelectedValue.ToString() <> "MO") Then
+                ' 'At Maturity' is not a valid principal frequency for irregular amortization.
+                If (FHLB360PrincipalFrequencyComboBox.SelectedValue.ToString().Equals("AM")) Then
+                    FHLB360PrincipalFrequencyComboBox.InputState = InputState.Error
+                    FHLB360PrincipalFrequencyComboBox.Tooltip = "'At Maturity' is not a valid principal frequency for irregular amortization."
+                    valid = False
+                Else
+                    Try
+                        mosToFirstPrinPmtReq = True
+                        If (FHLB360MosToFirstPrinPmtTextBox.Text.Equals(String.Empty)) Then
+                            FHLB360MosToFirstPrinPmtTextBox.InputState = InputState.Error
+                            FHLB360MosToFirstPrinPmtTextBox.Tooltip = "Months to first principal payment must be entered."
+                            valid = False
+                        Else
+                            Int32.Parse(FHLB360MosToFirstPrinPmtTextBox.Text)
+                        End If
+                    Catch ex As FormatException
+                        FHLB360MosToFirstPrinPmtTextBox.InputState = InputState.Error
+                        FHLB360MosToFirstPrinPmtTextBox.Tooltip = "The value specified for Months to First Principal Payment is invalid."
+                        valid = False
+                    Catch ex As OverflowException
+                        FHLB360MosToFirstPrinPmtTextBox.InputState = InputState.Error
+                        FHLB360MosToFirstPrinPmtTextBox.Tooltip = "The value specified for Months to First Principal Payment is too large."
+                        valid = False
+                    End Try
+                End If
+            End If
+
+            ' Toggle visibility of months to first payment controls based on the requirements.
+            ToggleMosToFirstPaymentFHLBC360(False, mosToFirstPrinPmtReq)
+
+            Return valid
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while validating FHLBC360 irregular inputs:" + Environment.NewLine + ex.Message,
+                                "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Handles the calculations and display of results for the FHLBC360 calculator.
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub CalculateFHLBC360()
+        Try
+            ' Flags for enabling/disabling months to first payment controls
+            Dim mosToFirstIntPmtReq As Boolean = False
+            Dim mosToFirstPrinPmtReq As Boolean = False
+
+            ' Required inputs
+            Dim accrualBasis As FHLBCredit360Calculator.AccrualBasis
+
+            Select Case (FHLB360AccrualBasisComboBox.SelectedValue.ToString())
+                Case "A3"
+                    accrualBasis = FHLBCredit360Calculator.AccrualBasis.ActThreeSixty
+                Case "33"
+                    accrualBasis = FHLBCredit360Calculator.AccrualBasis.ThirtyThreeSixty
+                Case "AA"
+                    accrualBasis = FHLBCredit360Calculator.AccrualBasis.ActAct
+            End Select
+
+            Dim amortType As FHLBCredit360Calculator.AmortizationType
+            Select Case (FHLB360AmortizationTypeComboBox.SelectedValue.ToString())
+                Case "E"
+                    amortType = FHLBCredit360Calculator.AmortizationType.Equal
+                Case "L"
+                    amortType = FHLBCredit360Calculator.AmortizationType.Linear
+                Case "B"
+                    amortType = FHLBCredit360Calculator.AmortizationType.Bullet
+                Case "I"
+                    amortType = FHLBCredit360Calculator.AmortizationType.Irregular
+            End Select
+
+            Dim intFrequency As FHLBCredit360Calculator.PaymentFrequency
+            Select Case (FHLB360InterestFrequencyComboBox.SelectedValue.ToString())
+                Case "MO"
+                    intFrequency = FHLBCredit360Calculator.PaymentFrequency.Monthly
+                Case "QU"
+                    intFrequency = FHLBCredit360Calculator.PaymentFrequency.Quarterly
+                Case "SA"
+                    intFrequency = FHLBCredit360Calculator.PaymentFrequency.SemiAnnual
+                Case "AN"
+                    intFrequency = FHLBCredit360Calculator.PaymentFrequency.Annual
+                Case "AM"
+                    intFrequency = FHLBCredit360Calculator.PaymentFrequency.AtMaturity
+            End Select
+
+            Dim prinFrequency As FHLBCredit360Calculator.PaymentFrequency
+            Select Case (FHLB360PrincipalFrequencyComboBox.SelectedValue.ToString())
+                Case "MO"
+                    prinFrequency = FHLBCredit360Calculator.PaymentFrequency.Monthly
+                Case "QU"
+                    prinFrequency = FHLBCredit360Calculator.PaymentFrequency.Quarterly
+                Case "SA"
+                    prinFrequency = FHLBCredit360Calculator.PaymentFrequency.SemiAnnual
+                Case "AN"
+                    prinFrequency = FHLBCredit360Calculator.PaymentFrequency.Annual
+                Case "AM"
+                    prinFrequency = FHLBCredit360Calculator.PaymentFrequency.AtMaturity
+            End Select
+
+            Dim prepmtWaiver As FHLBCredit360Calculator.PrepaymentWaiver
+            Select Case Convert.ToDouble(FHLB360PrepaymentWaiverComboBox.SelectedValue)
+                Case 0.0
+                    prepmtWaiver = FHLBCredit360Calculator.PrepaymentWaiver.ZeroPercent
+                Case 0.1
+                    prepmtWaiver = FHLBCredit360Calculator.PrepaymentWaiver.TenPercent
+                Case 0.15
+                    prepmtWaiver = FHLBCredit360Calculator.PrepaymentWaiver.FifteenPercent
+                Case 0.2
+                    prepmtWaiver = FHLBCredit360Calculator.PrepaymentWaiver.TwentyPercent
+                Case 0.3
+                    prepmtWaiver = FHLBCredit360Calculator.PrepaymentWaiver.ThirtyPercent
+                Case 1.0
+                    prepmtWaiver = FHLBCredit360Calculator.PrepaymentWaiver.Full
+            End Select
+
+            ' Input values
+            Dim requestedRateDate As Date = RateDateTreasuryDateTimePicker.Value.Date()
+            Dim term As Integer = Int32.Parse(FHLB360TermTextBox.Text)
+            Dim amort As Integer = Int32.Parse(FHLB360AmortizationTextBox.Text)
+
+            ' Optional inputs
+            Dim intOnly As Integer = If(Not FHLB360InterestOnlyTextBox.Text.Equals(String.Empty), Int32.Parse(FHLB360InterestOnlyTextBox.Text), 0)
+            Dim forward As Integer = If(Not FHLB360ForwardTextBox.Text.Equals(String.Empty), Int32.Parse(FHLB360ForwardTextBox.Text), 0)
+            Dim residual As Double = If(Not FHLB360ResidualTextBox.Text.Equals(String.Empty), Double.Parse(FHLB360ResidualTextBox.Text) / 100, 0)
+            Dim mosToFirstIntPmt As Integer = If(Not FHLB360MosToFirstIntPmtTextBox.Text.Equals(String.Empty), Int32.Parse(FHLB360MosToFirstIntPmtTextBox.Text), 0)
+            Dim mosToFirstPrinPmt As Integer = If(Not FHLB360MosToFirstPrinPmtTextBox.Text.Equals(String.Empty), Int32.Parse(FHLB360MosToFirstPrinPmtTextBox.Text), 0)
+
+            ' Create the FHLBC360 calculator
+            Dim fhlbc360Calc As New FHLBCredit360Calculator(requestedRateDate, term, amort, accrualBasis, amortType, prinFrequency, intFrequency, prepmtWaiver, intOnly, forward, residual, mosToFirstIntPmt, mosToFirstPrinPmt)
+
+            ' Validate business rules before attempting to calculate
+            Dim valid As Boolean = True
+            Dim validationResponses As List(Of FHLBCredit360CalculatorValidationResponse) = fhlbc360Calc.Validate()
+
+            ' Evaluate validation responses
+            For Each response As FHLBCredit360CalculatorValidationResponse In validationResponses
+
+                Dim state As InputState = InputState.Normal
+                ' Determine input state and whether validation has failed
+                Select Case response.ResponseType
+                    Case ValidationResponseType.Error
+                        valid = False
+                        state = InputState.Error
+                    Case ValidationResponseType.Warning
+                        state = InputState.Warning
+                    Case ValidationResponseType.ValueChange
+                        state = InputState.Warning
+                    Case ValidationResponseType.Enable
+                        state = InputState.Normal
+                End Select
+
+                ' Set control input states and messages, and change values if necessary
+                Select Case response.ResponseField
+                    Case FHLB360ValidationResponseField.RequestedRateDate
+                        If response.ResponseType = ValidationResponseType.Error Then
+                            Throw New Exception(response.ResponseMessage)
+                        Else
+                            MessageBox.Show(response.ResponseMessage, "Calculator Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                        End If
+                    Case FHLB360ValidationResponseField.AccrualBasis
+                        FHLB360AccrualBasisComboBox.InputState = state
+                        FHLB360AccrualBasisComboBox.Tooltip = response.ResponseMessage
+                    Case FHLB360ValidationResponseField.AmortizationType
+                        If response.ResponseType = ValidationResponseType.ValueChange Then
+                            FHLB360AmortizationTypeComboBox.InputState = state
+                            Dim at As FHLBCredit360Calculator.AmortizationType = DirectCast(response.NewValue, FHLBCredit360Calculator.AmortizationType)
+                            Select Case at
+                                Case FHLBCredit360Calculator.AmortizationType.Equal
+                                    FHLB360AmortizationTypeComboBox.SelectedValue = "E"
+                                Case FHLBCredit360Calculator.AmortizationType.Linear
+                                    FHLB360AmortizationTypeComboBox.SelectedValue = "L"
+                                Case FHLBCredit360Calculator.AmortizationType.Bullet
+                                    FHLB360AmortizationTypeComboBox.SelectedValue = "B"
+                                Case FHLBCredit360Calculator.AmortizationType.Irregular
+                                    FHLB360AmortizationTypeComboBox.SelectedValue = "I"
+                            End Select
+                            FHLB360AmortizationTypeComboBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                        Else
+                            FHLB360AmortizationTypeComboBox.Tooltip = response.ResponseMessage
+                        End If
+                    Case FHLB360ValidationResponseField.InterestFrequency
+                        FHLB360InterestFrequencyComboBox.InputState = state
+                        FHLB360InterestFrequencyComboBox.Tooltip = response.ResponseMessage
+                    Case FHLB360ValidationResponseField.PrincipalFrequency
+                        If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                            FHLB360PrincipalFrequencyComboBox.InputState = state
+                            Dim pf As FHLBCredit360Calculator.PaymentFrequency = DirectCast(response.NewValue, FHLBCredit360Calculator.PaymentFrequency)
+                            Select Case pf
+                                Case FTPRateCalculator.PaymentFrequency.Monthly
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "MO"
+                                Case FTPRateCalculator.PaymentFrequency.Quarterly
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "QU"
+                                Case FTPRateCalculator.PaymentFrequency.SemiAnnual
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "SA"
+                                Case FTPRateCalculator.PaymentFrequency.Annual
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "AN"
+                                Case FTPRateCalculator.PaymentFrequency.AtMaturity
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "AM"
+                            End Select
+                            FHLB360PrincipalFrequencyComboBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                        Else
+                            FHLB360PrincipalFrequencyComboBox.Tooltip = response.ResponseMessage
+                        End If
+
+                    Case FHLB360ValidationResponseField.PrepaymentWaiver
+                        FTPPrepaymentWaiverComboBox.InputState = state
+                        FTPPrepaymentWaiverComboBox.Tooltip = response.ResponseMessage
+
+                    Case FHLB360ValidationResponseField.Term
+                        FHLB360TermTextBox.InputState = state
+                        FHLB360TermTextBox.Tooltip = response.ResponseMessage
+
+                    Case FHLB360ValidationResponseField.Amortization
+                        If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                            FHLB360AmortizationTextBox.Text = response.NewValue.ToString()
+                            FHLB360AmortizationTextBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                        Else
+                            FHLB360AmortizationTextBox.Tooltip = response.ResponseMessage
+                        End If
+                        ' This needs to be set after changing value, otherwise background
+                        ' color will be reset to normal.
+                        FHLB360AmortizationTextBox.InputState = state
+
+                    Case FHLB360ValidationResponseField.InterestOnly
+                        FHLB360InterestOnlyTextBox.InputState = state
+                        FHLB360InterestOnlyTextBox.Tooltip = response.ResponseMessage
+
+                    Case FHLB360ValidationResponseField.Forward
+                        FHLB360ForwardTextBox.InputState = state
+                        FHLB360ForwardTextBox.Tooltip = response.ResponseMessage
+
+                    Case FHLB360ValidationResponseField.Residual
+                        FHLB360ResidualTextBox.InputState = state
+                        FHLB360ResidualTextBox.Tooltip = response.ResponseMessage
+
+                    Case FHLB360ValidationResponseField.MonthsToFirstIntPmt
+                        FHLB360MosToFirstIntPmtTextBox.InputState = state
+                        FHLB360MosToFirstIntPmtTextBox.Tooltip = response.ResponseMessage
+                        mosToFirstIntPmtReq = True
+
+                    Case FHLB360ValidationResponseField.MonthsToFirstPrinPmt
+                        FHLB360MosToFirstPrinPmtTextBox.InputState = state
+                        FHLB360MosToFirstPrinPmtTextBox.Tooltip = response.ResponseMessage
+                        mosToFirstPrinPmtReq = True
+
+                End Select
+            Next
+
+            ' Enable/disable months to first payment controls
+            ToggleMosToFirstPaymentFHLBC360(mosToFirstIntPmtReq, mosToFirstPrinPmtReq)
+
+            If valid Then
+                ' Perform calculations
+                Dim cof As Double = Math.Round(fhlbc360Calc.COF, 4)
+                Dim forwardCOF As Double = Math.Round(fhlbc360Calc.ForwardCost, 4)
+                ' Prepayment Waiver COF is a little different than the others;
+                ' it's normally +1/10,000, but under certain conditions (esp.
+                ' short terms) it can be less. In this case, the users want it
+                ' set to .0001 (which will be displayed as 1 basis points).
+                Dim waiverCOF As Double = fhlbc360Calc.WaiverCost
+                If (waiverCOF > 0.0) AndAlso (waiverCOF < 0.0001) Then
+                    waiverCOF = 0.0001
+                Else
+                    waiverCOF = Round(waiverCOF, 4)
+                End If
+
+                ' Display the results
+                FHLB360COFResultTextBox.Text = If(cof > 0.0, String.Format("{0:P}", cof), String.Empty)
+                FHLB360ForwardResultTextBox.Text = If(forwardCOF > 0.0, String.Format("{0:P}", forwardCOF), String.Empty)
+                FHLB360WaiverResultTextBox.Text = If(waiverCOF > 0.0, String.Format("{0:P}", waiverCOF), String.Empty)
+
+                If forwardCOF > 0 Or waiverCOF > 0 Then
+                    Dim allInCOF As Double = cof + forwardCOF + waiverCOF
+                    FHLB360AllInCOFResultTextBox.Text = String.Format("{0:P}", allInCOF)
+                End If
+
+                ' Notify the user if rates used in calculations are from a date different than the one requested
+                Dim rateDate As Date = fhlbc360Calc.RateDate
+                If (DateDiff(DateInterval.Day, rateDate, requestedRateDate) <> 0) Then
+                    DisplayRateDateWarning(CalculatorsTab.FHLBC360, rateDate)
+                End If
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing FHLBC360 calculations:" + Environment.NewLine + ex.Message,
+                                "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Calculates one of two optional values if the other is specified for FHLBC360.
+    ''' </summary>
+    ''' <remarks>
+    ''' One, and only one, of the two optional values must be specified for any
+    ''' calculation to take place. If All-In Cust. Rate is specified, this will
+    ''' calculate the difference between All-In Cust. Rate and All-In COF. Or if
+    ''' Spread is specified, this will calculate the sum of All-In COF and spread.
+    ''' </remarks>
+    Private Sub CalculateFHLBC360Optional()
+        Try
+            ' We can't do normal calculations if Irregular amortization type is selected
+            If FHLB360AmortizationTypeComboBox.SelectedValue.ToString().Equals("I") Then
+                Exit Sub
+            End If
+
+            Dim allInCOF As Double = 0.0
+            Dim spread As Double = 0.0
+            Dim allInCustRate As Double = 0.0
+            Dim valid As Boolean = True
+
+            ' Must have a valid All-In COF or COF
+            Try
+                ' Try for All-In COF first
+                Dim textVal = FHLB360AllInCOFResultTextBox.Text.Replace(" %", "")
+                If String.IsNullOrEmpty(textVal) Then
+                    ' All-In COF has not been calculated - use COF
+                    textVal = FHLB360COFResultTextBox.Text.Replace(" %", "")
+                End If
+                allInCOF = Double.Parse(textVal)
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' Spread is optional, but if specified must be a valid double
+            Try
+                If Not FHLB360SpreadTextBox.Text.Equals(String.Empty) Then
+                    spread = Double.Parse(FHLB360SpreadTextBox.Text)
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' All-In Cust. Rate is optional, but if specified must be a valid double
+            Try
+                If Not FHLB360AllInCustRateTextBox.Text.Equals(String.Empty) Then
+                    allInCustRate = Double.Parse(FHLB360AllInCustRateTextBox.Text)
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' TPP-9855 detolle 01-13-2026
+            ' Fixed validation logic to check text box state instead of numeric values.
+            ' Previous logic failed to detect when both fields were filled with zero/negative values,
+            ' and did not provide user feedback when validation failed.
+            ' One (and only one) of the optional inputs must be specified.
+            Dim spreadFilled As Boolean = Not FHLB360SpreadTextBox.Text.Equals(String.Empty)
+            Dim allInCustRateFilled As Boolean = Not FHLB360AllInCustRateTextBox.Text.Equals(String.Empty)
+
+            ' Use XOR logic: exactly one must be filled
+            If Not (spreadFilled Xor allInCustRateFilled) Then
+                valid = False
+            End If
+
+            If valid Then
+                ' Perform the calculation
+                If FHLB360SpreadTextBox.Text.Equals(String.Empty) Then
+                    spread = allInCustRate - allInCOF
+                    FHLB360SpreadTextBox.Text = Math.Round(spread, 2).ToString()
+                ElseIf FHLB360AllInCustRateTextBox.Text.Equals(String.Empty) Then
+                    allInCustRate = allInCOF + spread
+                    FHLB360AllInCustRateTextBox.Text = Math.Round(allInCustRate, 2).ToString()
+                End If
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing optional FHLBC360 calculations:" + Environment.NewLine + ex.Message,
+                                "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Loads the Irregular Cash Flows form for the FHLBC360 calculator.
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub LoadIrregularFormFHLBC360()
+        Try
+            ' Retrieve the parent window (initial display form)
+            Dim parentWindow As InitialDisplay = DirectCast(Me.ParentForm, InitialDisplay)
+
+            ' Only load one instance of the IrregularCashFlows form
+            If _irregularCashFlowsDT Is Nothing Then
+                ' Fetch the irregular cash flow data (replace -1 with a specific value if necessary)
+                _irregularCashFlowsDT = PrepaymentData.GetIrregularCashFlow(-1)
+            End If
+
+            ' Get required parameters from the UI controls
+            Dim pmtFrequency As String = FHLB360PrincipalFrequencyComboBox.SelectedValue.ToString()
+            Dim mosToFirstPrinPmt As Integer = If(pmtFrequency <> "MO", Integer.Parse(FHLB360MosToFirstPrinPmtTextBox.Text), 0)
+            Dim rateDate As Date = RateDateTreasuryDateTimePicker.Value.Date
+
+            ' Initialize the IrregularCashFlowRateLock form
+            Dim icfForm As New IrregularCashFlowRateLock(
+                rateDate,                            ' Pass the rate date from the form
+                rateDate,                            ' Pass the second date (can be the same rate date or another one)
+                pmtFrequency,                        ' Payment frequency
+                mosToFirstPrinPmt,                   ' Months to first principal payment
+                _irregularCashFlowsDT,               ' The data table for irregular cash flows
+                0                                    ' Default value for any other required field
+            )
+
+            ' Display the form as a dialog
+            icfForm.ShowDialog()
+
+        Catch ex As Exception
+            ' Log the exception and show an error message
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}",
+                (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name,
+                (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while displaying the Irregular form:" + Environment.NewLine + ex.Message,
+                            "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+#End Region
+
+#Region "FTP Calculator Methods"
+    ''' <summary>
+    ''' Enables or disables the months to first interest payment and months to first principal
+    ''' payment controls based on specified flags.
+    ''' </summary>
+    ''' <param name="intEnabled">
+    ''' A boolean value specifying whether to enable the months to first interest payment controls.
+    ''' </param>
+    ''' <param name="prinEnabled">
+    ''' A boolean value specifying whether to enable the months to first principal payment controls.
+    ''' </param>
+    ''' <remarks></remarks>
+    Private Sub ToggleMosToFirstPayment(ByVal intEnabled As Boolean, ByVal prinEnabled As Boolean)
+        Try
+            FTPMosToFirstIntPmtLabel.Enabled = intEnabled
+            FTPMosToFirstIntPmtTextBox.Enabled = intEnabled
+            FTPMosToFirstPrinPmtLabel.Enabled = prinEnabled
+            FTPMosToFirstPrinPmtTextBox.Enabled = prinEnabled
+
+            FTPMosToFirstIntPmtTextBox.Text = If(intEnabled, FTPMosToFirstIntPmtTextBox.Text, String.Empty)
+            FTPMosToFirstPrinPmtTextBox.Text = If(prinEnabled, FTPMosToFirstPrinPmtTextBox.Text, String.Empty)
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while enabling/disabling controls:" + Environment.NewLine + ex.Message,
+                                 "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Validate inputs before loading the Irregular Cash Flows form.
+    ''' </summary>
+    ''' <returns>True if inputs are valid, otherwise False.</returns>
+    ''' <remarks>
+    ''' This is called when the user has selected Irregular as the amortization type.
+    ''' </remarks>
+    Private Function ValidateFTPIrregular() As Boolean
+        Try
+            Dim mosToFirstPrinPmtReq As Boolean = False
+            Dim valid As Boolean = True
+
+            ' If a principal frequency other than monthly is selectd, the user
+            ' must enter the number of months to first payment.
+            If (FTPPrincipalFrequencyComboBox.SelectedValue.ToString() <> "MO") Then
+                ' 'At Maturity' is not a valid principal frequency for irregular amortization.
+                If (FTPPrincipalFrequencyComboBox.SelectedValue.ToString().Equals("AM")) Then
+                    FTPPrincipalFrequencyComboBox.InputState = InputState.Error
+                    FTPPrincipalFrequencyComboBox.Tooltip = "'At Maturity' is not a valid principal frequency for irregular amortization."
+                    valid = False
+                Else
+                    Try
+                        mosToFirstPrinPmtReq = True
+                        If (FTPMosToFirstPrinPmtTextBox.Text.Equals(String.Empty)) Then
+                            FTPMosToFirstPrinPmtTextBox.InputState = InputState.Error
+                            FTPMosToFirstPrinPmtTextBox.Tooltip = "Months to first principal payment must be entered."
+                            valid = False
+                        Else
+                            Int32.Parse(FTPMosToFirstPrinPmtTextBox.Text)
+                        End If
+                    Catch ex As FormatException
+                        FTPMosToFirstPrinPmtTextBox.InputState = InputState.Error
+                        FTPMosToFirstPrinPmtTextBox.Tooltip = "The value specified for Months to First Principal Payment is invalid."
+                        valid = False
+                    Catch ex As OverflowException
+                        FTPMosToFirstPrinPmtTextBox.InputState = InputState.Error
+                        FTPMosToFirstPrinPmtTextBox.Tooltip = "The value specified for Months to First Principal Payment is too large."
+                        valid = False
+                    End Try
+                End If
+            End If
+
+            ToggleMosToFirstPayment(False, mosToFirstPrinPmtReq)
+
+            Return valid
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while validating FTP inputs:" + Environment.NewLine + ex.Message,
+                                  "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Performs simple form-level validation of input controls for the FTP
+    ''' calculator.
+    ''' </summary>
+    ''' <returns>True if validation was successful, otherwise False.</returns>
+    ''' <remarks></remarks>
+    Private Function ValidateFTPInputs() As Boolean
+        Try
+            Dim valid As Boolean = True
+
+            ' Clear input states and any user messages before validating.
+            ClearControlStates(CalculatorsTab.FTP)
+            ClearResults(CalculatorsTab.FTP)
+
+            ' We can't do normal calculations if Irregular amortization type selected.
+            If (FTPAmortizationTypeComboBox.SelectedValue.ToString().Equals("I")) Then
+                IrregularButton.Visible = True
+                DisplayWarning(CalculatorsTab.FTP, "Normal calculations cannot be performed for irregular amortization. Use the button next to Amortization Type to load the Irregular Cash Flows form.")
+                'FTPAmortizationTypeComboBox.InputState = InputState.Warning
+                'FTPAmortizationTypeComboBox.Tooltip = "Normal calculations cannot be performed for irregular amortization. Use the button next to Amortization Type to load the Irregular Cash Flows form."
+                Return False
+            Else
+                IrregularButton.Visible = False
+            End If
+
+            ' Term is required and must be a valid integer.
+            Try
+                Int32.Parse(FTPTermTextBox.Text)
+            Catch ex As FormatException
+                FTPTermTextBox.InputState = InputState.Error
+                FTPTermTextBox.Tooltip = "The value specified for Term is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPTermTextBox.InputState = InputState.Error
+                FTPTermTextBox.Tooltip = "The value specified for Term is too large."
+                valid = False
+            End Try
+
+            ' Amortization is required and must be a valid integer.
+            Try
+                Int32.Parse(FTPAmortizationTextBox.Text)
+            Catch ex As FormatException
+                FTPAmortizationTextBox.InputState = InputState.Error
+                FTPAmortizationTextBox.Tooltip = "The value specified for Amortization is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPAmortizationTextBox.InputState = InputState.Error
+                FTPAmortizationTextBox.Tooltip = "The value specified for Amortization is too large."
+                valid = False
+            End Try
+
+            ' Interest Only is optional, but if specified must be a valid integer.
+            Try
+                If Not (FTPInterestOnlyTextBox.Text.Equals(String.Empty)) Then
+                    Int32.Parse(FTPInterestOnlyTextBox.Text)
+                End If
+            Catch ex As FormatException
+                FTPInterestOnlyTextBox.InputState = InputState.Error
+                FTPInterestOnlyTextBox.Tooltip = "The value specified for Interest Only is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPInterestOnlyTextBox.InputState = InputState.Error
+                FTPInterestOnlyTextBox.Tooltip = "The value specified for Interest Only is too large."
+                valid = False
+            End Try
+
+            ' Forward is optional, but if specified must be a valid integer.
+            Try
+                If Not (FTPForwardTextBox.Text.Equals(String.Empty)) Then
+                    Int32.Parse(FTPForwardTextBox.Text)
+                End If
+            Catch ex As FormatException
+                FTPForwardTextBox.InputState = InputState.Error
+                FTPForwardTextBox.Tooltip = "The value specified for Forward is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPForwardTextBox.InputState = InputState.Error
+                FTPForwardTextBox.Tooltip = "The value specified for Forward is too large."
+                valid = False
+            End Try
+
+            ' Residual is optional, but if specified must be a valid double.
+            Try
+                If Not (FTPResidualTextBox.Text.Equals(String.Empty)) Then
+                    Double.Parse(FTPResidualTextBox.Text)
+                End If
+            Catch ex As FormatException
+                FTPResidualTextBox.InputState = InputState.Error
+                FTPResidualTextBox.Tooltip = "The value specified for Residual is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPResidualTextBox.InputState = InputState.Error
+                FTPResidualTextBox.Tooltip = "The value specified for Residual is too large."
+                valid = False
+            End Try
+
+            ' Months to First Interest Payment is required only under certain circumstances
+            ' (see FTPRateCalculator.Validate()). If specified must be a valid integer.
+            Try
+                'If Not (FTPMosToFirstIntPmtTextBox.Text.Equals(String.Empty)) Then
+                If (FTPMosToFirstIntPmtTextBox.Enabled) Then
+                    Int32.Parse(FTPMosToFirstIntPmtTextBox.Text)
+                End If
+            Catch ex As FormatException
+                FTPMosToFirstIntPmtTextBox.InputState = InputState.Error
+                FTPMosToFirstIntPmtTextBox.Tooltip = "The value specified for Months to First Interest Payment is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPMosToFirstIntPmtTextBox.InputState = InputState.Error
+                FTPMosToFirstIntPmtTextBox.Tooltip = "The value specified for Months to First Interest Payment is too large."
+                valid = False
+            End Try
+
+            ' Months to First Principal Payment is required only under certain circumstances
+            ' (see FTPRateCalculator.Validate()). If specified must be a valid integer.
+            Try
+                'If Not (FTPMosToFirstPrinPmtTextBox.Text.Equals(String.Empty)) Then
+                If (FTPMosToFirstPrinPmtTextBox.Enabled) Then
+                    Int32.Parse(FTPMosToFirstPrinPmtTextBox.Text)
+                End If
+            Catch ex As FormatException
+                FTPMosToFirstPrinPmtTextBox.InputState = InputState.Error
+                FTPMosToFirstPrinPmtTextBox.Tooltip = "The value specified for Months to First Principal Payment is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPMosToFirstPrinPmtTextBox.InputState = InputState.Error
+                FTPMosToFirstPrinPmtTextBox.Tooltip = "The value specified for Months to First Principal Payment is too large."
+                valid = False
+            End Try
+
+            Return valid
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while validating FTP inputs:" + Environment.NewLine + ex.Message,
+                                  "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Handles the calculations and display of results for the FTP calculator.
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub CalculateFTP()
+        Try
+            Dim mosToFirstIntPmtReq As Boolean = False
+            Dim mosToFirstPrinPmtReq As Boolean = False
+
+            Dim accrualBasis As FTPRateCalculator.AccrualBasis
+            Select Case (FTPAccrualBasisComboBox.SelectedValue.ToString())
+                Case "A3"
+                    accrualBasis = FTPRateCalculator.AccrualBasis.ActThreeSixty
+                Case "33"
+                    accrualBasis = FTPRateCalculator.AccrualBasis.ThirtyThreeSixty
+                Case "AA"
+                    accrualBasis = FTPRateCalculator.AccrualBasis.ActAct
+            End Select
+
+            Dim amortType As FTPRateCalculator.AmortizationType
+            Select Case (FTPAmortizationTypeComboBox.SelectedValue.ToString())
+                Case "E"
+                    amortType = FTPRateCalculator.AmortizationType.Equal
+                Case "L"
+                    amortType = FTPRateCalculator.AmortizationType.Linear
+                Case "B"
+                    amortType = FTPRateCalculator.AmortizationType.Bullet
+                Case "I"
+                    amortType = FTPRateCalculator.AmortizationType.Irregular
+            End Select
+
+            Dim intFrequency As FTPRateCalculator.PaymentFrequency
+            Select Case (FTPInterestFrequencyComboBox.SelectedValue.ToString())
+                Case "MO"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.Monthly
+                Case "QU"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.Quarterly
+                Case "SA"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.SemiAnnual
+                Case "AN"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.Annual
+                Case "AM"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.AtMaturity
+            End Select
+
+            Dim prinFrequency As FTPRateCalculator.PaymentFrequency
+            Select Case (FTPPrincipalFrequencyComboBox.SelectedValue.ToString())
+                Case "MO"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.Monthly
+                Case "QU"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.Quarterly
+                Case "SA"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.SemiAnnual
+                Case "AN"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.Annual
+                Case "AM"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.AtMaturity
+            End Select
+
+            Dim prepmtWaiver As FTPRateCalculator.PrepaymentWaiver
+            Select Case (Convert.ToDouble(FTPPrepaymentWaiverComboBox.SelectedValue))
+                Case 0.0
+                    prepmtWaiver = FTPRateCalculator.PrepaymentWaiver.ZeroPercent
+                Case 0.1
+                    prepmtWaiver = FTPRateCalculator.PrepaymentWaiver.TenPercent
+                Case 0.15
+                    prepmtWaiver = FTPRateCalculator.PrepaymentWaiver.FifteenPercent
+                Case 0.2
+                    prepmtWaiver = FTPRateCalculator.PrepaymentWaiver.TwentyPercent
+                Case 0.3
+                    prepmtWaiver = FTPRateCalculator.PrepaymentWaiver.ThirtyPercent
+                Case 1.0
+                    prepmtWaiver = FTPRateCalculator.PrepaymentWaiver.Full
+            End Select
+
+            ' Required inputs.
+            Dim requestedRateDate As Date = RateDateTreasuryDateTimePicker.Value.Date()
+            Dim term As Integer = Int32.Parse(FTPTermTextBox.Text)
+            Dim amort As Integer = Int32.Parse(FTPAmortizationTextBox.Text)
+
+            ' Optional inputs.
+            Dim intOnly As Integer = If(Not FTPInterestOnlyTextBox.Text.Equals(String.Empty), Int32.Parse(FTPInterestOnlyTextBox.Text), 0)
+            Dim forward As Integer = If(Not FTPForwardTextBox.Text.Equals(String.Empty), Int32.Parse(FTPForwardTextBox.Text), 0)
+            Dim residual As Double = If(Not FTPResidualTextBox.Text.Equals(String.Empty), Double.Parse(FTPResidualTextBox.Text) / 100, 0)
+            Dim mosToFirstIntPmt As Integer = If(Not FTPMosToFirstIntPmtTextBox.Text.Equals(String.Empty), Int32.Parse(FTPMosToFirstIntPmtTextBox.Text), 0)
+            Dim mosToFirstPrinPmt As Integer = If(Not FTPMosToFirstPrinPmtTextBox.Text.Equals(String.Empty), Int32.Parse(FTPMosToFirstPrinPmtTextBox.Text), 0)
+
+            ' Create the calculator.
+            Dim ftpCalc As FTPRateCalculator = New FTPRateCalculator(requestedRateDate, term, amort, accrualBasis, amortType,
+                                                                     prinFrequency, intFrequency, prepmtWaiver, intOnly,
+                                                                     forward, residual, mosToFirstIntPmt, mosToFirstPrinPmt)
+
+            ' Validate business rules before attempting to calculate.
+            Dim valid As Boolean = True
+            Dim validationResponses As List(Of FTPRateCalculatorValidationResponse)
+            validationResponses = ftpCalc.Validate()
+
+            ' Evaluate validation responses.
+            For Each response As FTPRateCalculatorValidationResponse In validationResponses
+                ' Determine input state and whether validation has failed.
+                Dim state As InputState = InputState.Normal
+                Select Case response.ResponseType
+                    Case ValidationResponseType.Error
+                        valid = False
+                        state = InputState.Error
+                    Case ValidationResponseType.Warning
+                        state = InputState.Warning
+                    Case ValidationResponseType.ValueChange
+                        state = InputState.Warning
+                    Case ValidationResponseType.Enable
+                        state = InputState.Normal
+                End Select
+
+                ' Set control input states and messages, and change values if necessary.
+                Select Case response.ResponseField
+                    Case FTPValidationResponseField.RequestedRateDate
+                        If (response.ResponseType = ValidationResponseType.Error) Then
+                            Throw New Exception(response.ResponseMessage)
+                        Else
+                            MessageBox.Show(response.ResponseMessage, "Calculator Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                        End If
+                    Case FTPValidationResponseField.AccrualBasis
+                        FTPAccrualBasisComboBox.InputState = state
+                        FTPAccrualBasisComboBox.Tooltip = response.ResponseMessage
+                    Case FTPValidationResponseField.AmortizationType
+                        If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                            FTPAmortizationTypeComboBox.InputState = state
+                            Dim at As FTPRateCalculator.AmortizationType = DirectCast(response.NewValue, FTPRateCalculator.AmortizationType)
+                            Select Case at
+                                Case FTPRateCalculator.AmortizationType.Equal
+                                    FTPAmortizationTypeComboBox.SelectedValue = "E"
+                                Case FTPRateCalculator.AmortizationType.Linear
+                                    FTPAmortizationTypeComboBox.SelectedValue = "L"
+                                Case FTPRateCalculator.AmortizationType.Bullet
+                                    FTPAmortizationTypeComboBox.SelectedValue = "B"
+                                Case FTPRateCalculator.AmortizationType.Irregular
+                                    FTPAmortizationTypeComboBox.SelectedValue = "I"
+                            End Select
+                            FTPAmortizationTypeComboBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                        Else
+                            FTPAmortizationTypeComboBox.Tooltip = response.ResponseMessage
+                        End If
+                    Case FTPValidationResponseField.InterestFrequency
+                        FTPInterestFrequencyComboBox.InputState = state
+                        FTPInterestFrequencyComboBox.Tooltip = response.ResponseMessage
+                    Case FTPValidationResponseField.PrincipalFrequency
+                        If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                            FTPPrincipalFrequencyComboBox.InputState = state
+                            Dim pf As FTPRateCalculator.PaymentFrequency = DirectCast(response.NewValue, FTPRateCalculator.PaymentFrequency)
+                            Select Case pf
+                                Case FTPRateCalculator.PaymentFrequency.Monthly
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "MO"
+                                Case FTPRateCalculator.PaymentFrequency.Quarterly
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "QU"
+                                Case FTPRateCalculator.PaymentFrequency.SemiAnnual
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "SA"
+                                Case FTPRateCalculator.PaymentFrequency.Annual
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "AN"
+                                Case FTPRateCalculator.PaymentFrequency.AtMaturity
+                                    FTPPrincipalFrequencyComboBox.SelectedValue = "AM"
+                            End Select
+                            FTPPrincipalFrequencyComboBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                        Else
+                            FTPPrincipalFrequencyComboBox.Tooltip = response.ResponseMessage
+                        End If
+                    Case FTPValidationResponseField.PrepaymentWaiver
+                        FTPPrepaymentWaiverComboBox.InputState = state
+                        FTPPrepaymentWaiverComboBox.Tooltip = response.ResponseMessage
+
+                    Case FTPValidationResponseField.Term
+                        FTPTermTextBox.InputState = state
+                        FTPTermTextBox.Tooltip = response.ResponseMessage
+
+                    Case FTPValidationResponseField.Amortization
+                        If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                            FTPAmortizationTextBox.Text = response.NewValue.ToString()
+                            FTPAmortizationTextBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                        Else
+                            FTPAmortizationTextBox.Tooltip = response.ResponseMessage
+                        End If
+                        ' This needs to be set after changing value, otherwise background
+                        ' color will be reset to normal.
+                        FTPAmortizationTextBox.InputState = state
+
+                    Case FTPValidationResponseField.InterestOnly
+                        FTPInterestOnlyTextBox.InputState = state
+                        FTPInterestOnlyTextBox.Tooltip = response.ResponseMessage
+
+                    Case FTPValidationResponseField.Forward
+                        FTPForwardTextBox.InputState = state
+                        FTPForwardTextBox.Tooltip = response.ResponseMessage
+
+                    Case FTPValidationResponseField.Residual
+                        FTPResidualTextBox.InputState = state
+                        FTPResidualTextBox.Tooltip = response.ResponseMessage
+
+                    Case FTPValidationResponseField.MonthsToFirstIntPmt
+                        FTPMosToFirstIntPmtTextBox.InputState = state
+                        FTPMosToFirstIntPmtTextBox.Tooltip = response.ResponseMessage
+                        mosToFirstIntPmtReq = True
+
+                    Case FTPValidationResponseField.MonthsToFirstPrinPmt
+                        FTPMosToFirstPrinPmtTextBox.InputState = state
+                        FTPMosToFirstPrinPmtTextBox.Tooltip = response.ResponseMessage
+                        mosToFirstPrinPmtReq = True
+                End Select
+            Next
+
+            ' Enable/disable months to first payment controls.
+            ToggleMosToFirstPayment(mosToFirstIntPmtReq, mosToFirstPrinPmtReq)
+
+            If (valid) Then
+                ' Calculate results.
+                Dim cof As Double = Round(ftpCalc.COF, 4)
+                Dim forwardCOF As Double = Round(ftpCalc.ForwardCost, 4)
+
+                ' Prepayment Waiver COF is a little different than the others;
+                ' it's normally +1/10,000, but under certain conditions (esp.
+                ' short terms) it can be less. In this case, the users want it
+                ' set to .0001 (which will be displayed as 1 basis points).
+                Dim waiverCOF As Double = ftpCalc.WaiverCost
+                If (waiverCOF > 0.0) AndAlso (waiverCOF < 0.0001) Then
+                    waiverCOF = 0.0001
+                Else
+                    waiverCOF = Round(waiverCOF, 4)
+                End If
+
+                ' Display the results.
+                FTPCOFResultTextBox.Text = If(cof > 0.0, String.Format("{0:P}", cof), String.Empty)
+                'FTPForwardResultTextBox.Text = If(forwardCOF > 0.0, String.Format("{0:G}", Round(forwardCOF * 10000, 0)), String.Empty)
+                FTPForwardResultTextBox.Text = If(forwardCOF > 0.0, String.Format("{0:P}", forwardCOF), String.Empty)
+                'FTPWaiverResultTextBox.Text = If(waiverCOF > 0.0, String.Format("{0:G}", Round(waiverCOF * 10000, 0)), String.Empty)
+                FTPWaiverResultTextBox.Text = If(waiverCOF > 0.0, String.Format("{0:P}", waiverCOF), String.Empty)
+                If (forwardCOF > 0) Or (waiverCOF > 0) Then
+                    Dim allInCOF As Double = cof + forwardCOF + waiverCOF
+                    FTPAllInCOFResultTextBox.Text = String.Format("{0:P}", allInCOF)
+                End If
+
+                ' Notify the user if rates used in calculations are from a date
+                ' different than that selected by user.
+                Dim rateDate As Date = ftpCalc.RateDate
+                If (DateDiff(DateInterval.Day, rateDate, requestedRateDate) <> 0) Then
+                    DisplayRateDateWarning(CalculatorsTab.FTP, rateDate)
+                End If
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing FTP calculations:" + Environment.NewLine + ex.Message,
+                                "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Calculates one of two optional values if the other is specified.
+    ''' </summary>
+    ''' <remarks>
+    ''' One, and only one, of the two optional values must be specified for any
+    ''' calculation to take place. If All-In Cust. Rate is specified, this will
+    ''' calculate the difference between All-In Cust. Rate and All-In COF. Or if
+    ''' Spread is specified, this will calculate the sum of All-In COF and spread.
+    ''' </remarks>
+    Private Sub CalculateFTPOptional()
+        Try
+            ' We can't do normal calculations if Irregular amortization type
+            ' is selected, so just return.
+            If (FTPAmortizationTypeComboBox.SelectedValue.ToString().Equals("I")) Then
+                Exit Sub
+            End If
+
+            Dim allInCOF As Double = 0.0
+            Dim spread As Double = 0.0
+            Dim allInCustRate As Double = 0.0
+            Dim valid As Boolean = True
+
+            ' Must have a valid All-In COF or COF.
+
+            Try
+                Dim textVal As String = Nothing
+
+                If Not String.IsNullOrWhiteSpace(FTPAllInCOFResultTextBox.Text) Then
+                    textVal = FTPAllInCOFResultTextBox.Text.Replace("%", "").Trim()
+                ElseIf Not String.IsNullOrWhiteSpace(FTPCOFResultTextBox.Text) Then
+                    textVal = FTPCOFResultTextBox.Text.Replace("%", "").Trim()
+                End If
+
+                If Not String.IsNullOrWhiteSpace(textVal) Then
+                    allInCOF = Double.Parse(textVal)
+                Else
+                    valid = False
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+
+            ' Spread is optional, but if specified must be a valid double.
+            Try
+                If Not (FTPSpreadTextBox.Text.Equals(String.Empty)) Then
+                    spread = Double.Parse(FTPSpreadTextBox.Text)
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' All-In Cust. Rate is optional, but if specified must be a valid double.
+            Try
+                If Not (FTPAllInCustRateTextBox.Text.Equals(String.Empty)) Then
+                    allInCustRate = Double.Parse(FTPAllInCustRateTextBox.Text)
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' TPP-9855 detolle 01-13-2026
+            ' Fixed validation logic to check text box state instead of numeric values.
+            ' Previous logic failed to detect when both fields were filled with zero/negative values,
+            ' and did not provide user feedback when validation failed.
+            ' One (and only one) of the optional inputs must be specified.
+            Dim spreadFilled As Boolean = Not FTPSpreadTextBox.Text.Equals(String.Empty)
+            Dim allInCustRateFilled As Boolean = Not FTPAllInCustRateTextBox.Text.Equals(String.Empty)
+
+            ' Use XOR logic: exactly one must be filled
+            If Not (spreadFilled Xor allInCustRateFilled) Then
+                valid = False
+            End If
+
+            If (valid) Then
+                ' Perform the calculation.
+                If (FTPSpreadTextBox.Text.Equals(String.Empty)) Then
+                    spread = allInCustRate - allInCOF
+                    FTPSpreadTextBox.Text = Round(spread, 2).ToString()
+                ElseIf (FTPAllInCustRateTextBox.Text.Equals(String.Empty)) Then
+                    allInCustRate = allInCOF + spread
+                    FTPAllInCustRateTextBox.Text = Round(allInCustRate, 2).ToString()
+                End If
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing optional FTP calculations:" + Environment.NewLine + ex.Message,
+                                "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Loads the Irregular Cash Flows form.
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub LoadIrregularForm()
+        Try
+            ' SAVE vvvvvvvvvvvvvvvvvvvvvvvv SAVE
+            Dim parentWindow As InitialDisplay = DirectCast(Me.ParentForm, InitialDisplay)
+
+            If (_irregularCashFlowsDT Is Nothing) Then
+                _irregularCashFlowsDT = PrepaymentData.GetIrregularCashFlow(-1)
+            End If
+            Dim pmtFrequency As String = FTPPrincipalFrequencyComboBox.SelectedValue.ToString()
+            Dim mosToFirstPrinPmt As Integer = If(pmtFrequency <> "MO", Integer.Parse(FTPMosToFirstPrinPmtTextBox.Text), 0)
+            Dim icfForm As IrregularCashFlowRateLock = New IrregularCashFlowRateLock(RateDateTreasuryDateTimePicker.Value.Date,
+                                                                                     RateDateTreasuryDateTimePicker.Value.Date,
+                                                                                     pmtFrequency,
+                                                                                     mosToFirstPrinPmt,
+                                                                                     _irregularCashFlowsDT,
+                                                                                     0)
+            'icfForm.MdiParent = DirectCast(Me.ParentForm, InitialDisplay)
+            'icfForm.Parent = DirectCast(Me.ParentForm, InitialDisplay)
+            icfForm.ShowDialog()
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while displaying Irregular form:" + Environment.NewLine + ex.Message,
+                                 "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+#End Region
+
+#Region "CIP Calculator Methods"
+    ''' <summary>
+    ''' Performs simple form-level validation of input controls for the CIP
+    ''' calculator.
+    ''' </summary>
+    ''' <returns>True if validation was successful, otherwise False.</returns>
+    ''' <remarks></remarks>
+    Private Function ValidateCIPInputs() As Boolean
+        Try
+            Dim valid As Boolean = True
+
+            ' Clear input states and any user messages before validating.
+            ClearControlStates(CalculatorsTab.CIP)
+            ClearResults(CalculatorsTab.CIP)
+
+            ' Term is required and must be a valid integer.
+            Try
+                Int32.Parse(CIPTermTextBox.Text)
+            Catch ex As FormatException
+                CIPTermTextBox.InputState = InputState.Error
+                CIPTermTextBox.Tooltip = "The value specified for Term is invalid."
+                valid = False
+            Catch ex As OverflowException
+                CIPTermTextBox.InputState = InputState.Error
+                CIPTermTextBox.Tooltip = "The value specified for Term is too large."
+                valid = False
+            End Try
+
+            ' Amortization is required and must be a valid integer.
+            Try
+                Int32.Parse(CIPAmortizationTextBox.Text)
+            Catch ex As FormatException
+                CIPAmortizationTextBox.InputState = InputState.Error
+                CIPAmortizationTextBox.Tooltip = "The value specified for Amortization is invalid."
+                valid = False
+            Catch ex As OverflowException
+                CIPAmortizationTextBox.InputState = InputState.Error
+                CIPAmortizationTextBox.Tooltip = "The value specified for Amortization is too large."
+                valid = False
+            End Try
+
+            '  Interest Only is optional, but if specified must be a valid integer.
+            Try
+                If Not (CIPInterestOnlyTextBox.Text.Equals(String.Empty)) Then
+                    Int32.Parse(CIPInterestOnlyTextBox.Text)
+                End If
+            Catch ex As FormatException
+                CIPInterestOnlyTextBox.InputState = InputState.Error
+                CIPInterestOnlyTextBox.Tooltip = "The value specified for Interest Only is invalid."
+                valid = False
+            Catch ex As OverflowException
+                CIPInterestOnlyTextBox.InputState = InputState.Error
+                CIPInterestOnlyTextBox.Tooltip = "The value specified for Interest Only is too large."
+                valid = False
+            End Try
+
+            ' Forward is optional, but if specified must be a valid integer.
+            Try
+                If Not (CIPForwardTextBox.Text.Equals(String.Empty)) Then
+                    Int32.Parse(CIPForwardTextBox.Text)
+                End If
+            Catch ex As FormatException
+                CIPForwardTextBox.InputState = InputState.Error
+                CIPForwardTextBox.Tooltip = "The value specified for Forward is invalid."
+                valid = False
+            Catch ex As OverflowException
+                CIPForwardTextBox.InputState = InputState.Error
+                CIPForwardTextBox.Tooltip = "The value specified for Forward is too large."
+                valid = False
+            End Try
+
+            Return valid
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while validating CIP inputs:" + Environment.NewLine + ex.Message,
+                                 "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Handles the calculations and displaying of reults for the for the
+    ''' CIP calculator.
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub CalculateCIP()
+        Try
+            Dim accrualBasis As Calculator.AccrualBasis
+            Select Case (CIPAccrualBasisComboBox.SelectedValue.ToString())
+                Case "A3"
+                    accrualBasis = Calculator.AccrualBasis.ActThreeSixty
+                Case "33"
+                    accrualBasis = Calculator.AccrualBasis.ThirtyThreeSixty
+                Case "AA"
+                    accrualBasis = Calculator.AccrualBasis.ActAct
+            End Select
+
+            Dim amortType As Calculator.AmortizationType
+            Select Case (CIPAmortizationTypeComboBox.SelectedValue.ToString())
+                Case "E"
+                    amortType = Calculator.AmortizationType.Equal
+                Case "L"
+                    amortType = Calculator.AmortizationType.Linear
+                Case "B"
+                    amortType = Calculator.AmortizationType.Bullet
+                Case "I"
+                    amortType = Calculator.AmortizationType.Irregular
+            End Select
+
+            Dim intFrequency As Calculator.PaymentFrequency
+            Select Case (CIPInterestFrequencyComboBox.SelectedValue.ToString())
+                Case "MO"
+                    intFrequency = Calculator.PaymentFrequency.Monthly
+                Case "QU"
+                    intFrequency = Calculator.PaymentFrequency.Quarterly
+                Case "SA"
+                    intFrequency = Calculator.PaymentFrequency.SemiAnnual
+                Case "AN"
+                    intFrequency = Calculator.PaymentFrequency.Annual
+                Case "AM"
+                    intFrequency = Calculator.PaymentFrequency.AtMaturity
+            End Select
+
+            Dim prinFrequency As Calculator.PaymentFrequency
+            Select Case (CIPPrincipalFrequencyComboBox.SelectedValue.ToString())
+                Case "MO"
+                    prinFrequency = Calculator.PaymentFrequency.Monthly
+                Case "QU"
+                    prinFrequency = Calculator.PaymentFrequency.Quarterly
+                Case "SA"
+                    prinFrequency = Calculator.PaymentFrequency.SemiAnnual
+                Case "AN"
+                    prinFrequency = Calculator.PaymentFrequency.Annual
+                Case "AM"
+                    prinFrequency = Calculator.PaymentFrequency.AtMaturity
+            End Select
+
+
+            Dim prepmtWaiver As CIPRateCalculator.PrepaymentWaiver
+            Select Case (Convert.ToDouble(CIPPrepaymentWaiverComboBox.SelectedValue))
+                Case 0.0
+                    prepmtWaiver = CIPRateCalculator.PrepaymentWaiver.ZeroPercent
+                Case 0.1
+                    prepmtWaiver = CIPRateCalculator.PrepaymentWaiver.TenPercent
+                Case 0.15
+                    prepmtWaiver = CIPRateCalculator.PrepaymentWaiver.FifteenPercent
+                Case 0.2
+                    prepmtWaiver = CIPRateCalculator.PrepaymentWaiver.TwentyPercent
+                Case 0.3
+                    prepmtWaiver = CIPRateCalculator.PrepaymentWaiver.ThirtyPercent
+                Case 1.0
+                    prepmtWaiver = CIPRateCalculator.PrepaymentWaiver.Full
+            End Select
+
+            ' Required inputs.
+            Dim requestedRateDate As Date = RateDateTreasuryDateTimePicker.Value.Date()
+            Dim term As Integer = Int32.Parse(CIPTermTextBox.Text)
+            Dim amort As Integer = Int32.Parse(CIPAmortizationTextBox.Text)
+
+            ' Optional inputs.
+            Dim interestOnly As Integer = If(Not CIPInterestOnlyTextBox.Text.Equals(String.Empty), Int32.Parse(CIPInterestOnlyTextBox.Text), 0)
+            Dim forward As Integer = If(Not CIPForwardTextBox.Text.Equals(String.Empty), Int32.Parse(CIPForwardTextBox.Text), 0)
+
+            ' Create the CIP360 calculator.
+            Dim cipCalc As CIP360Calculator = New CIP360Calculator(requestedRateDate, term, amort,
+                                                accrualBasis, amortType, prinFrequency, intFrequency, forward, prepmtWaiver, interestOnly)
+
+            ' Must validate inputs before attempting to calculate.
+            Dim valid As Boolean = True
+            Dim validationResponses As List(Of CIPRateCalculatorValidationResponse)
+
+            validationResponses = cipCalc.Validate()
+            For Each response As CIPRateCalculatorValidationResponse In validationResponses
+
+                ' Determine input state and whether validation has failed.
+                Dim state As InputState = InputState.Normal
+                Select Case response.ResponseType
+                    Case ValidationResponseType.Error
+                        valid = False
+                        state = InputState.Error
+                    Case ValidationResponseType.Warning
+                        state = InputState.Warning
+                    Case ValidationResponseType.ValueChange
+                        state = InputState.Warning
+                End Select
+
+                ' Set input states and messages, and change values if necessary.
+                Select Case response.ResponseField
+                    Case CIPValidationResponseField.RequestedRateDate
+                        If (response.ResponseType = ValidationResponseType.Error) Then
+                            Throw New Exception(response.ResponseMessage)
+                        Else
+                            MessageBox.Show(response.ResponseMessage, "Calculator Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                        End If
+                    Case CIPValidationResponseField.Term
+                        CIPTermTextBox.InputState = state
+                        CIPTermTextBox.Tooltip = response.ResponseMessage
+                    Case CIPValidationResponseField.Amortization
+                        CIPAmortizationTextBox.InputState = state
+                        CIPAmortizationTextBox.Tooltip = response.ResponseMessage
+                    Case CIPValidationResponseField.Forward
+                        CIPForwardTextBox.InputState = state
+                        CIPForwardTextBox.Tooltip = response.ResponseMessage
+                    Case CIPValidationResponseField.PrepaymentWaiver
+                        CIPPrepaymentWaiverComboBox.InputState = state
+                        CIPPrepaymentWaiverComboBox.Tooltip = response.ResponseMessage
+                    Case CIPValidationResponseField.AccrualBasis
+                        CIPAccrualBasisComboBox.InputState = state
+                        CIPAccrualBasisComboBox.Tooltip = response.ResponseMessage
+                    Case CIPValidationResponseField.AmortizationType
+                        If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                            CIPAmortizationTypeComboBox.InputState = state
+                            Dim at As CIPRateCalculator.AmortizationType = DirectCast(response.NewValue, CIPRateCalculator.AmortizationType)
+                            Select Case at
+                                Case CIPRateCalculator.AmortizationType.Equal
+                                    CIPAmortizationTypeComboBox.SelectedValue = "E"
+                                Case CIPRateCalculator.AmortizationType.Linear
+                                    CIPAmortizationTypeComboBox.SelectedValue = "L"
+                                Case CIPRateCalculator.AmortizationType.Bullet
+                                    CIPAmortizationTypeComboBox.SelectedValue = "B"
+                                Case CIPRateCalculator.AmortizationType.Irregular
+                                    CIPAmortizationTypeComboBox.SelectedValue = "I"
+                            End Select
+                            CIPAmortizationTypeComboBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                        Else
+                            CIPAmortizationTypeComboBox.Tooltip = response.ResponseMessage
+                        End If
+                    Case CIPValidationResponseField.InterestFrequency
+                        CIPInterestFrequencyComboBox.InputState = state
+                        CIPInterestFrequencyComboBox.Tooltip = response.ResponseMessage
+                    Case CIPValidationResponseField.PrincipalFrequency
+                        If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                            CIPPrincipalFrequencyComboBox.InputState = state
+                            Dim pf As CIPRateCalculator.PaymentFrequency = DirectCast(response.NewValue, CIPRateCalculator.PaymentFrequency)
+                            Select Case pf
+                                Case CIPRateCalculator.PaymentFrequency.Monthly
+                                    CIPPrincipalFrequencyComboBox.SelectedValue = "MO"
+                                Case CIPRateCalculator.PaymentFrequency.Quarterly
+                                    CIPPrincipalFrequencyComboBox.SelectedValue = "QU"
+                                Case CIPRateCalculator.PaymentFrequency.SemiAnnual
+                                    CIPPrincipalFrequencyComboBox.SelectedValue = "SA"
+                                Case CIPRateCalculator.PaymentFrequency.Annual
+                                    CIPPrincipalFrequencyComboBox.SelectedValue = "AN"
+                                Case CIPRateCalculator.PaymentFrequency.AtMaturity
+                                    CIPPrincipalFrequencyComboBox.SelectedValue = "AM"
+                            End Select
+                            CIPPrincipalFrequencyComboBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                        Else
+                            CIPPrincipalFrequencyComboBox.Tooltip = response.ResponseMessage
+                        End If
+                End Select
+            Next
+
+            If (valid) Then
+                ' Calculate.
+                Dim cipRate As Double = Round(cipCalc.CIPRate, 4)
+                Dim forwardCOF As Double = Round(cipCalc.ForwardCost, 4)
+                Dim waiverCOF As Double = Round(cipCalc.WaiverCost, 4)
+
+                ' Display the results.
+                CIPRateResultTextBox.Text = If(cipRate > 0.0, String.Format("{0:P}", cipRate), String.Empty)
+                'CIPForwardResultTextBox.Text = If(forwardCOF > 0.0, String.Format("{0:G}", Round(forwardCOF * 10000, 0)), String.Empty)
+                CIPForwardResultTextBox.Text = If(forwardCOF > 0.0, String.Format("{0:P}", forwardCOF), String.Empty)
+                'CIPWaiverResultTextBox.Text = If(waiverCOF > 0.0, String.Format("{0:G}", Round(waiverCOF * 10000, 0)), String.Empty)
+                CIPWaiverResultTextBox.Text = If(waiverCOF > 0.0, String.Format("{0:P}", waiverCOF), String.Empty)
+                If (forwardCOF > 0) Or (waiverCOF > 0) Then
+                    Dim allInCOF As Double = cipRate + forwardCOF + waiverCOF
+                    CIPAllInCOFResultTextBox.Text = String.Format("{0:P}", allInCOF)
+                End If
+
+                ' Notify the user if rates used in calculations are from a date
+                ' different than that selected by user.
+                Dim rateDate As Date = cipCalc.RateDate
+                If (DateDiff(DateInterval.Day, rateDate, requestedRateDate) <> 0) Then
+                    DisplayRateDateWarning(CalculatorsTab.CIP, rateDate)
+                End If
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing CIP calculations:" + Environment.NewLine + ex.Message,
+                                 "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Calculates one of two optional values if the other is specified.
+    ''' </summary>
+    ''' <remarks>
+    ''' One, and only one, of the two optional values must be specified for any
+    ''' calculation to take place. If All-In Cust. Rate is specified, this will
+    ''' calculate the difference between All-In Cust. Rate and All-In COF. Or if
+    ''' Spread is specified, this will calculate the sum of All-In COF and spread.
+    ''' </remarks>
+    Private Sub CalculateCIPOptional()
+        Try
+            Dim allInCOF As Double = 0.0
+            Dim spread As Double = 0.0
+            Dim allInCustRate As Double = 0.0
+            Dim valid As Boolean = True
+
+            ' Must have a valid All-In COF or CIP Rate.
+            Try
+                ' Try for All-In COF first.
+                Dim textVal = CIPAllInCOFResultTextBox.Text.Replace(" %", "")
+                If (textVal Is Nothing) Or (textVal = String.Empty) Then
+                    ' All-In COF has not been calculated - use CIP Rate.
+                    textVal = CIPRateResultTextBox.Text.Replace(" %", "")
+                End If
+                allInCOF = Double.Parse(textVal)
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' Spread is optional, but if specified must be a valid double.
+            Try
+                If Not (CIPSpreadTextBox.Text.Equals(String.Empty)) Then
+                    spread = Double.Parse(CIPSpreadTextBox.Text)
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' All-In Cust. Rate is optional, but if specified must be a valid double.
+            Try
+                If Not (CIPAllInCustRateTextBox.Text.Equals(String.Empty)) Then
+                    allInCustRate = Double.Parse(CIPAllInCustRateTextBox.Text)
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' TPP-9855 detolle 01-13-2026
+            ' Fixed validation logic to check text box state instead of numeric values.
+            ' Previous logic failed to detect when both fields were filled with zero/negative values,
+            ' and did not provide user feedback when validation failed.
+            ' One (and only one) of the optional inputs must be specified.
+            Dim spreadFilled As Boolean = Not CIPSpreadTextBox.Text.Equals(String.Empty)
+            Dim allInCustRateFilled As Boolean = Not CIPAllInCustRateTextBox.Text.Equals(String.Empty)
+
+            ' Use XOR logic: exactly one must be filled
+            If Not (spreadFilled Xor allInCustRateFilled) Then
+                valid = False
+            End If
+
+            If (valid) Then
+                ' Perform the calculation.
+                If (CIPSpreadTextBox.Text.Equals(String.Empty)) Then
+                    spread = allInCustRate - allInCOF
+                    CIPSpreadTextBox.Text = Round(spread, 2).ToString()
+                ElseIf (CIPAllInCustRateTextBox.Text.Equals(String.Empty)) Then
+                    allInCustRate = allInCOF + spread
+                    CIPAllInCustRateTextBox.Text = Round(allInCustRate, 2).ToString()
+                End If
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing optional CIP calculations:" + Environment.NewLine + ex.Message,
+                                   "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+#End Region
+
+#Region "ALS Calculator Methods"
+    ''' <summary>
+    ''' Performs simple form-level validation of input controls for the ALS
+    ''' calculator.
+    ''' </summary>
+    ''' <returns>True if validation was successful, otherwise False.</returns>
+    ''' <remarks></remarks>
+    Private Function ValidateALSInputs() As Boolean
+        Try
+            Dim valid As Boolean = True
+
+            ' Clear input states and any user messages before validating.
+            ClearControlStates(CalculatorsTab.ALS)
+            ClearResults(CalculatorsTab.ALS)
+
+            ' Term is required and must be a valid integer.
+            Try
+                Int32.Parse(ALSTermTextBox.Text)
+            Catch ex As FormatException
+                ALSTermTextBox.InputState = InputState.Error
+                ALSTermTextBox.Tooltip = "The value specified for Term is invalid."
+                valid = False
+            Catch ex As OverflowException
+                ALSTermTextBox.InputState = InputState.Error
+                ALSTermTextBox.Tooltip = "The value specified for Term is too large."
+                valid = False
+            End Try
+
+            ' Amortization is required and must be a valid integer.
+            Try
+                Int32.Parse(ALSAmortizationTextBox.Text)
+            Catch ex As FormatException
+                ALSAmortizationTextBox.InputState = InputState.Error
+                ALSAmortizationTextBox.Tooltip = "The value specified for Amortization is invalid."
+                valid = False
+            Catch ex As OverflowException
+                ALSAmortizationTextBox.InputState = InputState.Error
+                ALSAmortizationTextBox.Tooltip = "The value specified for Amortization is too large."
+                valid = False
+            End Try
+
+            Return valid
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while validating ALS inputs:" + Environment.NewLine + ex.Message,
+                                   "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Handles the calculations and displaying of reults for the for the
+    ''' ALS calculator.
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub CalculateALS()
+        Try
+            Dim consumerLoanType As ALSRateCalculator.ConsumerLoanType = ALSRateCalculator.ConsumerLoanType.FirstMortgage
+            Select Case (ALSConsumerLoanTypeComboBox.SelectedValue.ToString())
+                Case "1M"
+                    consumerLoanType = ALSRateCalculator.ConsumerLoanType.FirstMortgage
+                Case "H1"
+                    consumerLoanType = ALSRateCalculator.ConsumerLoanType.HomeEquityFirst
+                Case "H2"
+                    consumerLoanType = ALSRateCalculator.ConsumerLoanType.HomeEquitySecond
+                Case "CI"
+                    consumerLoanType = ALSRateCalculator.ConsumerLoanType.ConsumerInstallment
+                Case "AU"
+                    consumerLoanType = ALSRateCalculator.ConsumerLoanType.Auto
+            End Select
+
+            Dim requestedRateDate As Date = RateDateTreasuryDateTimePicker.Value.Date()
+            Dim term As Integer = Convert.ToInt32(ALSTermTextBox.Text)
+            Dim amortization As Integer = Convert.ToInt32(ALSAmortizationTextBox.Text)
+
+            Dim alsCalc As New ALSRateCalculator(requestedRateDate, term, amortization, consumerLoanType)
+
+            Dim valid As Boolean = True
+            Dim validationResponses As List(Of ALSRateCalculatorValidationResponse)
+            validationResponses = alsCalc.Validate()
+
+            For Each response As ALSRateCalculatorValidationResponse In validationResponses
+                ' Determine input state and whether validation has failed.
+                Dim state As InputState = InputState.Normal
+                If (response.ResponseType = ValidationResponseType.Error) Then
+                    valid = False
+                    state = InputState.Error
+                ElseIf (response.ResponseType = ValidationResponseType.Warning) Then
+                    state = InputState.Warning
+                End If
+
+                ' Set input states and messages, and change values if necessary.
+                Select Case response.ResponseField
+                    Case ALSValidationResponseField.Term
+                        ALSTermTextBox.InputState = state
+                        ALSTermTextBox.Tooltip = response.ResponseMessage
+                    Case ALSValidationResponseField.Amortization
+                        ALSAmortizationTextBox.InputState = state
+                        ALSAmortizationTextBox.Tooltip = response.ResponseMessage
+                    Case ALSValidationResponseField.ConsumerLoanType
+                        ALSConsumerLoanTypeComboBox.InputState = state
+                        ALSConsumerLoanTypeComboBox.Tooltip = response.ResponseMessage
+                End Select
+            Next
+
+            If (valid) Then
+                ' Calculate.
+                Dim cpr As Double = Round(alsCalc.CPR, 8) * 100
+                Dim optionCost As Double = Round(alsCalc.OptionCost, 4)
+                Dim allInCOF As Double = Round(alsCalc.AllInCOF, 4)
+                Dim cof As Double = Round(allInCOF - optionCost, 4)
+
+                ' Display results.
+                ALSCOFResultTextBox.Text = If(cof > 0.0, String.Format("{0:P}", cof), String.Empty)
+                ALSOptionCostResultTextBox.Text = If(optionCost > 0.0, String.Format("{0:P}", optionCost), String.Empty)
+                ALSAllInCOFResultTextBox.Text = If(allInCOF > 0.0, String.Format("{0:P}", allInCOF), String.Empty)
+                ALSCPRResultTextBox.Text = If(cpr > 0.0, String.Format("{0:G}", cpr), String.Empty)
+
+                ' Notify the user if rates used in calculations are from a date
+                ' different than that selected by user.
+                Dim rateDate As Date = alsCalc.RateDate
+                If (DateDiff(DateInterval.Day, rateDate, requestedRateDate) <> 0) Then
+                    DisplayRateDateWarning(CalculatorsTab.ALS, rateDate)
+                End If
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing ALS calculations:" + Environment.NewLine + ex.Message,
+                                  "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+    ''' <summary>
+    ''' Calculates one of two optional values if the other is specified.
+    ''' </summary>
+    ''' <remarks>
+    ''' One, and only one, of the two optional values must be specified for any
+    ''' calculation to take place. If All-In Cust. Rate is specified, this will
+    ''' calculate the difference between All-In Cust. Rate and All-In COF. Or if
+    ''' Spread is specified, this will calculate the sum of All-In COF and spread.
+    ''' </remarks>
+    Private Sub CalculateALSOptional()
+        Try
+            Dim allInCOF As Double = 0.0
+            Dim spread As Double = 0.0
+            Dim allInCustRate As Double = 0.0
+            Dim valid As Boolean = True
+
+            ' Must have a valid All-In COF.
+            Try
+                allInCOF = Double.Parse(ALSAllInCOFResultTextBox.Text.Replace(" %", ""))
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' Spread is optional, but if specified must be a valid double.
+            Try
+                If Not (ALSSpreadTextBox.Text.Equals(String.Empty)) Then
+                    spread = Double.Parse(ALSSpreadTextBox.Text)
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' All-In Cust. Rate is optional, but if specified must be a valid double.
+            Try
+                If Not (ALSAllInCustRateTextBox.Text.Equals(String.Empty)) Then
+                    allInCustRate = Double.Parse(ALSAllInCustRateTextBox.Text)
+                End If
+            Catch ex As Exception
+                valid = False
+            End Try
+
+            ' TPP-9855 detolle 01-13-2026
+            ' Fixed validation logic to check text box state instead of numeric values.
+            ' Previous logic failed to detect when both fields were filled with zero/negative values,
+            ' and did not provide user feedback when validation failed.
+            ' One (and only one) of the optional inputs must be specified.
+            Dim spreadFilled As Boolean = Not ALSSpreadTextBox.Text.Equals(String.Empty)
+            Dim allInCustRateFilled As Boolean = Not ALSAllInCustRateTextBox.Text.Equals(String.Empty)
+
+            ' Use XOR logic: exactly one must be filled
+            If Not (spreadFilled Xor allInCustRateFilled) Then
+                valid = False
+            End If
+
+            If (valid) Then
+                ' Perform the calculation.
+                If (ALSSpreadTextBox.Text.Equals(String.Empty)) Then
+                    spread = allInCustRate - allInCOF
+                    ALSSpreadTextBox.Text = Round(spread, 2).ToString()
+                ElseIf (ALSAllInCustRateTextBox.Text.Equals(String.Empty)) Then
+                    allInCustRate = allInCOF + spread
+                    ALSAllInCustRateTextBox.Text = Round(allInCustRate, 2).ToString()
+                End If
+            End If
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing optional ALS calculations:" + Environment.NewLine + ex.Message,
+                                   "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+#End Region
+
+#Region "P & I Calculator Methods"
+    ''' <summary>
+    ''' Performs simple form-level validation of input controls for the P and I
+    ''' Payment calculator.
+    ''' </summary>
+    ''' <returns>True if validation was successful, otherwise False.</returns>
+    ''' <remarks></remarks>
+    Private Function ValidatePIInputs() As Boolean
+        Try
+            Return PICalcControl.ValidateInputs()
+        Catch ex As Exception
+            MessageBox.Show("An error occurred while validating P & I inputs:" + Environment.NewLine + ex.Message,
+                            "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Handles the calculations and displaying of results for the P and I
+    ''' Payment calculator.
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub CalculatePI()
+        Try
+            PICalcControl.Calculate()
+        Catch ex As Exception
+            MessageBox.Show("An error occurred while performing P & I calculations:" + Environment.NewLine + ex.Message,
+                            "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+#End Region
+
+#Region "FTP Historical Calculator Methods"
+    ''' <summary>
+    ''' Performs simple form-level validation of input controls for the FTP Historical
+    ''' calculator.
+    ''' </summary>
+    ''' <returns>True if validation was successful, otherwise False.</returns>
+    ''' <remarks></remarks>
+    Private Function ValidateFTPHistInputs() As Boolean
+        Try
+            Dim valid As Boolean = True
+
+            ' Clear input states and any user messages before validating.
+            ClearControlStates(CalculatorsTab.FTPH)
+
+            ' Check the date range.
+            If (FTPHistStartDateTreasuryDateTimePicker.Value > FTPHistEndDateTreasuryDateTimePicker.Value) Then
+                FTPHistStartDateTreasuryDateTimePicker.InputState = InputState.Error
+                FTPHistStartDateTreasuryDateTimePicker.Tooltip = "Start date cannot be greater than end date."
+                valid = False
+            End If
+
+            ' Term is required and must be a valid integer.
+            Try
+                Int32.Parse(FTPHistTermTreasuryTextBox.Text)
+            Catch ex As FormatException
+                FTPHistTermTreasuryTextBox.InputState = InputState.Error
+                FTPHistTermTreasuryTextBox.Tooltip = "The value specified for Term is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPHistTermTreasuryTextBox.InputState = InputState.Error
+                FTPHistTermTreasuryTextBox.Tooltip = "The value specified for Term is too large."
+                valid = False
+            End Try
+
+            ' Amortization is required and must be a valid integer.
+            Try
+                Int32.Parse(FTPHistAmortTreasuryTextBox.Text)
+            Catch ex As FormatException
+                FTPHistAmortTreasuryTextBox.InputState = InputState.Error
+                FTPHistAmortTreasuryTextBox.Tooltip = "The value specified for Amortization is invalid."
+                valid = False
+            Catch ex As OverflowException
+                FTPHistAmortTreasuryTextBox.InputState = InputState.Error
+                FTPHistAmortTreasuryTextBox.Tooltip = "The value specified for Amortization is too large."
+                valid = False
+            End Try
+
+            Return valid
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show(String.Format("An error occurred while validating FTP Historical inputs:{0}{1}", Environment.NewLine, ex.Message),
+                            "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Handles the calculations and display of results for the FTP calculator.
+    ''' </summary>
+    ''' <remarks></remarks>
+    Private Sub CalculateFTPHistorical()
+        Try
+            ' Required inputs.
+            Dim accrualBasis As FTPRateCalculator.AccrualBasis
+            Select Case (FTPHistAccrualBasisTreasuryComboBox.SelectedValue.ToString())
+                Case "A3"
+                    accrualBasis = FTPRateCalculator.AccrualBasis.ActThreeSixty
+                Case "33"
+                    accrualBasis = FTPRateCalculator.AccrualBasis.ThirtyThreeSixty
+                Case "AA"
+                    accrualBasis = FTPRateCalculator.AccrualBasis.ActAct
+            End Select
+
+            Dim amortType As FTPRateCalculator.AmortizationType
+            Select Case (FTPHistAmortTypeTreasuryComboBox.SelectedValue.ToString())
+                Case "E"
+                    amortType = FTPRateCalculator.AmortizationType.Equal
+                Case "L"
+                    amortType = FTPRateCalculator.AmortizationType.Linear
+                Case "B"
+                    amortType = FTPRateCalculator.AmortizationType.Bullet
+                Case "I"
+                    amortType = FTPRateCalculator.AmortizationType.Irregular
+            End Select
+
+            Dim intFrequency As FTPRateCalculator.PaymentFrequency
+            Select Case (FTPHistIntFreqTreasuryComboBox.SelectedValue.ToString())
+                Case "MO"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.Monthly
+                Case "QU"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.Quarterly
+                Case "SA"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.SemiAnnual
+                Case "AN"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.Annual
+                Case "AM"
+                    intFrequency = FTPRateCalculator.PaymentFrequency.AtMaturity
+            End Select
+
+            Dim prinFrequency As FTPRateCalculator.PaymentFrequency
+            Select Case (FTPHistPrinFreqTreasuryComboBox.SelectedValue.ToString())
+                Case "MO"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.Monthly
+                Case "QU"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.Quarterly
+                Case "SA"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.SemiAnnual
+                Case "AN"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.Annual
+                Case "AM"
+                    prinFrequency = FTPRateCalculator.PaymentFrequency.AtMaturity
+            End Select
+
+            Dim term As Integer = Int32.Parse(FTPHistTermTreasuryTextBox.Text)
+            Dim amort As Integer = Int32.Parse(FTPHistAmortTreasuryTextBox.Text)
+
+            ' Optional inputs.
+            Dim prepmtWaiver As FTPRateCalculator.PrepaymentWaiver = FTPRateCalculator.PrepaymentWaiver.ZeroPercent
+            Dim intOnly As Integer = 0
+            Dim forward As Integer = 0
+            Dim residual As Double = 0
+            Dim mosToFirstIntPmt As Integer = 0
+            Dim mosToFirstPrinPmt As Integer = 0
+
+            FTPHistAutoGridControl.Rows.Clear()
+
+            Dim requestedRateDate As Date = FTPHistStartDateTreasuryDateTimePicker.Value.Date()
+            While requestedRateDate <= FTPHistEndDateTreasuryDateTimePicker.Value.Date()
+                ' Create the calculator.
+                Dim ftpCalc As FTPRateCalculator = New FTPRateCalculator(requestedRateDate, term, amort, accrualBasis, amortType,
+                                                                         prinFrequency, intFrequency, prepmtWaiver, intOnly,
+                                                                         forward, residual, mosToFirstIntPmt, mosToFirstPrinPmt)
+
+                ' Validate business rules before attempting to calculate.
+                Dim valid As Boolean = True
+                Dim validationResponses As List(Of FTPRateCalculatorValidationResponse)
+                validationResponses = ftpCalc.Validate()
+
+                ' Evaluate validation responses.
+                For Each response As FTPRateCalculatorValidationResponse In validationResponses
+                    ' Determine input state and whether validation has failed.
+                    Dim state As InputState = InputState.Normal
+                    Select Case response.ResponseType
+                        Case ValidationResponseType.Error
+                            valid = False
+                            state = InputState.Error
+                        Case ValidationResponseType.Warning
+                            state = InputState.Warning
+                        Case ValidationResponseType.ValueChange
+                            state = InputState.Warning
+                        Case ValidationResponseType.Enable
+                            state = InputState.Normal
+                    End Select
+
+                    ' Set control input states and messages, and change values if necessary.
+                    Select Case response.ResponseField
+                        Case FTPValidationResponseField.RequestedRateDate
+                            If (response.ResponseType = ValidationResponseType.Error) Then
+                                Throw New Exception(response.ResponseMessage)
+                            Else
+                                MessageBox.Show(response.ResponseMessage, "Calculator Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning)
+                            End If
+                        Case FTPValidationResponseField.AccrualBasis
+                            FTPHistAccrualBasisTreasuryComboBox.InputState = state
+                            FTPHistAccrualBasisTreasuryComboBox.Tooltip = response.ResponseMessage
+                        Case FTPValidationResponseField.AmortizationType
+                            If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                                FTPHistAmortTypeTreasuryComboBox.InputState = state
+                                Dim at As FTPRateCalculator.AmortizationType = DirectCast(response.NewValue, FTPRateCalculator.AmortizationType)
+                                Select Case at
+                                    Case FTPRateCalculator.AmortizationType.Equal
+                                        FTPHistAmortTypeTreasuryComboBox.SelectedValue = "E"
+                                    Case FTPRateCalculator.AmortizationType.Linear
+                                        FTPHistAmortTypeTreasuryComboBox.SelectedValue = "L"
+                                    Case FTPRateCalculator.AmortizationType.Bullet
+                                        FTPHistAmortTypeTreasuryComboBox.SelectedValue = "B"
+                                    Case FTPRateCalculator.AmortizationType.Irregular
+                                        FTPHistAmortTypeTreasuryComboBox.SelectedValue = "I"
+                                End Select
+                                FTPHistAmortTypeTreasuryComboBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                            Else
+                                FTPHistAmortTypeTreasuryComboBox.Tooltip = response.ResponseMessage
+                            End If
+                        Case FTPValidationResponseField.InterestFrequency
+                            FTPHistIntFreqTreasuryComboBox.InputState = state
+                            FTPHistIntFreqTreasuryComboBox.Tooltip = response.ResponseMessage
+                        Case FTPValidationResponseField.PrincipalFrequency
+                            If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                                FTPHistPrinFreqTreasuryComboBox.InputState = state
+                                Dim pf As FTPRateCalculator.PaymentFrequency = DirectCast(response.NewValue, FTPRateCalculator.PaymentFrequency)
+                                Select Case pf
+                                    Case FTPRateCalculator.PaymentFrequency.Monthly
+                                        FTPHistPrinFreqTreasuryComboBox.SelectedValue = "MO"
+                                    Case FTPRateCalculator.PaymentFrequency.Quarterly
+                                        FTPHistPrinFreqTreasuryComboBox.SelectedValue = "QU"
+                                    Case FTPRateCalculator.PaymentFrequency.SemiAnnual
+                                        FTPHistPrinFreqTreasuryComboBox.SelectedValue = "SA"
+                                    Case FTPRateCalculator.PaymentFrequency.Annual
+                                        FTPHistPrinFreqTreasuryComboBox.SelectedValue = "AN"
+                                    Case FTPRateCalculator.PaymentFrequency.AtMaturity
+                                        FTPHistPrinFreqTreasuryComboBox.SelectedValue = "AM"
+                                End Select
+                                FTPHistPrinFreqTreasuryComboBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                            Else
+                                FTPHistPrinFreqTreasuryComboBox.Tooltip = response.ResponseMessage
+                            End If
+                        Case FTPValidationResponseField.Term
+                            FTPHistTermTreasuryTextBox.InputState = state
+                            FTPHistTermTreasuryTextBox.Tooltip = response.ResponseMessage
+                        Case FTPValidationResponseField.Amortization
+                            If (response.ResponseType = ValidationResponseType.ValueChange) Then
+                                FTPHistAmortTreasuryTextBox.Text = response.NewValue.ToString()
+                                FTPHistAmortTreasuryTextBox.Tooltip = "This value has been changed - " + response.ResponseMessage
+                            Else
+                                FTPHistAmortTreasuryTextBox.Tooltip = response.ResponseMessage
+                            End If
+                            ' This needs to be set after changing value, otherwise background
+                            ' color will be reset to normal.
+                            FTPHistAmortTreasuryTextBox.InputState = state
+                    End Select
+                Next
+
+                If (valid) Then
+                    ' Calculate results.
+                    'Dim cof As Double = Round(ftpCalc.COF, 4)
+
+                    ' Display the results.
+                    FTPHistAutoGridControl.Rows.Add()
+                    Dim row As DataGridViewRow = FTPHistAutoGridControl.Rows(FTPHistAutoGridControl.Rows.Count - 1)
+                    row.Cells("Date").Value = requestedRateDate
+                    row.Cells("COF").Value = ftpCalc.COF
+                End If
+
+                requestedRateDate = requestedRateDate.AddDays(1)
+            End While
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while performing FTP calculations:" + Environment.NewLine + ex.Message,
+                                "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        End Try
+    End Sub
+
+
+#End Region 'FTP Historical Calculator Methods
+
+#Region "Form Events"
+    Private Sub CalculatorsForm_Load(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles MyBase.Load
+        Try
+            _formLoading = True
+
+            Dim parentWindow As InitialDisplay = DirectCast(Me.ParentForm, InitialDisplay)
+
+            'FTP'
+            With FTPAccrualBasisComboBox
+                .DataSource = parentWindow.LAccuralBasis
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FTPAmortizationTypeComboBox
+                .DataSource = parentWindow.LFTPAmortizationType
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FTPInterestFrequencyComboBox
+                .DataSource = parentWindow.LFTPPaymentFrequency
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FTPPrincipalFrequencyComboBox
+                .DataSource = New DataView(parentWindow.LFTPPaymentFrequency)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FTPPrepaymentWaiverComboBox
+                .DataSource = parentWindow.LFTPPrepaymentWaiver
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            'Need to add my FHLB360 fields here'
+            With FHLB360AccrualBasisComboBox
+                .DataSource = parentWindow.LAccuralBasis
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FHLB360AmortizationTypeComboBox
+                .DataSource = parentWindow.LFTPAmortizationType
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FHLB360InterestFrequencyComboBox
+                .DataSource = parentWindow.LFTPPaymentFrequency
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FHLB360PrincipalFrequencyComboBox
+                .DataSource = New DataView(parentWindow.LFTPPaymentFrequency)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FHLB360PrepaymentWaiverComboBox
+                .DataSource = parentWindow.LFTPPrepaymentWaiver
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+
+            ' CPI Accrual Basis
+            With CIPAccrualBasisComboBox
+                .DataSource = New DataView(parentWindow.LAccuralBasis)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With CIPAmortizationTypeComboBox
+                .DataSource = New DataView(parentWindow.LAmortizationType)      'Do not use LFTPAmortization type - it has irregular
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With CIPPrincipalFrequencyComboBox
+                .DataSource = New DataView(parentWindow.LFTPPaymentFrequency)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With CIPInterestFrequencyComboBox
+                .DataSource = New DataView(parentWindow.LFTPPaymentFrequency)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With CIPPrepaymentWaiverComboBox
+                .DataSource = New DataView(parentWindow.LFTPPrepaymentWaiver)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            ' ALS
+
+            With ALSConsumerLoanTypeComboBox
+                .DataSource = parentWindow.LConsumerLoanType
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            ' FTP History'
+            With FTPHistAccrualBasisTreasuryComboBox
+                .DataSource = New DataView(parentWindow.LAccuralBasis)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FTPHistAmortTypeTreasuryComboBox
+                .DataSource = New DataView(parentWindow.LAmortizationType)      'Do not use LFTPAmortization type - it has irregular
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FTPHistPrinFreqTreasuryComboBox
+                .DataSource = New DataView(parentWindow.LFTPPaymentFrequency)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            With FTPHistIntFreqTreasuryComboBox
+                .DataSource = New DataView(parentWindow.LFTPPaymentFrequency)
+                .DisplayMember = "Description"
+                .ValueMember = "Code"
+            End With
+
+            PICalcControl.PaymentFrequencyDataSource = New DataView(parentWindow.LPIPaymentFrequency)
+            PICalcControl.PaymentFrequencyDefaultIndex = parentWindow.LPIPaymentFrequency.Rows.IndexOf(parentWindow.LPIPaymentFrequency.Select("DefaultFlag=1").FirstOrDefault())
+
+            ' Set default values for inputs.
+            SetDefaultValues(CalculatorsTab.FTP)
+            SetDefaultValues(CalculatorsTab.CIP)
+            SetDefaultValues(CalculatorsTab.ALS)
+            SetDefaultValues(CalculatorsTab.PI)
+            SetDefaultValues(CalculatorsTab.FTPH)
+            SetDefaultValues(CalculatorsTab.FHLBC360)
+
+            FTPHistAutoGridControl.Setup("FTPHistorical")
+
+            ' The FTP calc tab will be the first shown, so calculate based
+            ' on its default values.
+            CalculateFTP()
+
+            Me.WindowState = FormWindowState.Normal
+        Catch ex As Exception
+            Dim msg As String = String.Format("Exception caught in {0}.{1}(): {2}", (New StackTrace()).GetFrame(0).GetMethod().ReflectedType.Name, (New StackTrace()).GetFrame(0).GetMethod().Name, ex.Message)
+            CommonUI.EventLog.LogException(msg, ex.StackTrace)
+            MessageBox.Show("An error occurred while loading the calculator form:" + Environment.NewLine + ex.Message,
+                                    "Calculator Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        Finally
+            _formLoading = False
+        End Try
+    End Sub
+
+    Private Sub RateDateTreasuryDateTimePicker_DropDown(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles RateDateTreasuryDateTimePicker.DropDown
+        _rateDTPOpen = True
+    End Sub
+
+    Private Sub HandleSelectedTab()
+        Select Case CalculatorsTabControl.SelectedTab.Name
+            Case "FTPRateCalculatorTabPage"
+                If (ValidateFTPInputs()) Then
+                    CalculateFTP()
+                End If
+            Case "CIPRateCalculatorTabPage"
+                If (ValidateCIPInputs()) Then
+                    CalculateCIP()
+                End If
+            Case "ALSRateCalculatorTabPage"
+                If (ValidateALSInputs()) Then
+                    CalculateALS()
+                End If
+            Case "FHLBCredit360CalculatorTab"
+                If (ValidateFHLBC360Inputs()) Then
+                    CalculateFHLBC360()
+                End If
+            Case "PandIPaymentCalculatorTabPage"
+                ' Add any specific logic for P&I Payment Calculator if needed
+        End Select
+    End Sub
+
+    Private Sub RateDateTreasuryDateTimePicker_CloseUp(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles RateDateTreasuryDateTimePicker.CloseUp
+        _rateDTPOpen = False
+        HistoricalLabel.Visible = If(RateDateTreasuryDateTimePicker.Value < Date.Today, True, False)
+        HandleSelectedTab()
+    End Sub
+
+    Private Sub RateDateTreasuryDateTimePicker_ValueChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles RateDateTreasuryDateTimePicker.ValueChanged
+        If Not ((_rateDTPOpen) Or (_formLoading)) Then
+            HistoricalLabel.Visible = If(RateDateTreasuryDateTimePicker.Value < Date.Today, True, False)
+            HandleSelectedTab()
+        End If
+    End Sub
+
+    Private Sub CalculatorsTabControl_SelectedIndexChanged(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles CalculatorsTabControl.SelectedIndexChanged
+        HandleSelectedTab()
+    End Sub
+
+#End Region 'Form Events
+
+#Region "FTP Calculator Events"
+    Private Sub FTPComboBox_SelectionChangeCommitted(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FTPAccrualBasisComboBox.SelectionChangeCommitted, FTPAmortizationTypeComboBox.SelectionChangeCommitted, FTPInterestFrequencyComboBox.SelectionChangeCommitted, FTPPrincipalFrequencyComboBox.SelectionChangeCommitted, FTPPrepaymentWaiverComboBox.SelectionChangeCommitted
+        If (ValidateFTPInputs()) Then
+            CalculateFTP()
+        End If
+    End Sub
+
+    'Private Sub FTPInputTextBox_OnEnterKeyPress() Handles FTPTermTextBox.OnEnterKeyPress, FTPAmortizationTextBox.OnEnterKeyPress, FTPInterestOnlyTextBox.OnEnterKeyPress, FTPForwardTextBox.OnEnterKeyPress, FTPResidualTextBox.OnEnterKeyPress, FTPMosToFirstIntPmtTextBox.OnEnterKeyPress, FTPMosToFirstPrinPmtTextBox.OnEnterKeyPress
+    '    If (ValidateFTPInputs()) Then
+    '        CalculateFTP()
+    '    End If
+    'End Sub
+
+    Private Sub FTPInputTextBox_Leave(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FTPTermTextBox.Leave, FTPAmortizationTextBox.Leave, FTPInterestOnlyTextBox.Leave, FTPForwardTextBox.Leave, FTPResidualTextBox.Leave, FTPMosToFirstIntPmtTextBox.Leave, FTPMosToFirstPrinPmtTextBox.Leave
+        '        FTPInputTextBox_OnEnterKeyPress()
+        If (ValidateFTPInputs()) Then
+            CalculateFTP()
+        End If
+    End Sub
+
+    'Private Sub FTPInputOutputTextBox_OnEnterKeyPress() Handles FTPSpreadTextBox.OnEnterKeyPress, FTPAllInCustRateTextBox.OnEnterKeyPress
+    '    CalculateFTPOptional()
+    'End Sub
+
+    Private Sub FTPInputOutputTextBox_Leave(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FTPSpreadTextBox.Leave, FTPAllInCustRateTextBox.Leave
+        '        FTPInputOutputTextBox_OnEnterKeyPress()
+        CalculateFTPOptional()
+    End Sub
+
+    Private Sub IrregularButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles IrregularButton.Click
+        If (ValidateFTPIrregular()) Then
+            LoadIrregularForm()
+        End If
+    End Sub
+
+    Private Sub FTPResetButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FTPResetButton.Click
+        SetDefaultValues(CalculatorsTab.FTP)
+    End Sub
+#End Region
+
+#Region "FHLB360 Calc Events"
+
+    Private Sub FHLB360ComboBox_SelectionChangeCommitted(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FHLB360AccrualBasisComboBox.SelectionChangeCommitted, FHLB360AmortizationTypeComboBox.SelectionChangeCommitted, FHLB360InterestFrequencyComboBox.SelectionChangeCommitted, FHLB360PrincipalFrequencyComboBox.SelectionChangeCommitted, FHLB360PrepaymentWaiverComboBox.SelectionChangeCommitted
+        If (ValidateFHLBC360Inputs()) Then
+            CalculateFHLBC360()
+        End If
+    End Sub
+
+    Private Sub FHLB360InputTextBox_Leave(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FHLB360TermTextBox.Leave, FHLB360AmortizationTextBox.Leave, FHLB360InterestOnlyTextBox.Leave, FHLB360ForwardTextBox.Leave, FHLB360ResidualTextBox.Leave, FHLB360MosToFirstIntPmtTextBox.Leave, FHLB360MosToFirstPrinPmtTextBox.Leave
+        '        FTPInputTextBox_OnEnterKeyPress()
+        If (ValidateFHLBC360Inputs()) Then
+            CalculateFHLBC360()
+        End If
+    End Sub
+
+    Private Sub FHLB360InputOutputTextBox_Leave(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FHLB360SpreadTextBox.Leave, FHLB360AllInCustRateTextBox.Leave
+        '        FTPInputOutputTextBox_OnEnterKeyPress()
+        CalculateFHLBC360Optional()
+    End Sub
+
+    Private Sub FHLB360IrregularButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FHLB360IrregularButton.Click
+        If (ValidateFHLBC360Irregular()) Then
+            LoadIrregularFormFHLBC360()
+        End If
+    End Sub
+
+    Private Sub FHLB360ResetButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles FHLB360ResetButton.Click
+        SetDefaultValues(CalculatorsTab.FHLBC360)
+    End Sub
+
+#End Region
+
+#Region "CIP Calculator Events"
+    'Private Sub CIPInputTextBox_OnEnterKeyPress() Handles CIPTermTextBox.OnEnterKeyPress, CIPAmortizationTextBox.OnEnterKeyPress, CIPForwardTextBox.OnEnterKeyPress
+    '    If (ValidateCIPInputs()) Then
+    '        CalculateCIP()
+    '    End If
+    'End Sub
+
+    Private Sub CIPInputTextBox_Leave(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles CIPTermTextBox.Leave, CIPAmortizationTextBox.Leave, CIPInterestOnlyTextBox.Leave, CIPForwardTextBox.Leave
+        'CIPInputTextBox_OnEnterKeyPress()
+        If (ValidateCIPInputs()) Then
+            CalculateCIP()
+        End If
+    End Sub
+
+    'Private Sub CIPInputOutputTextBox_OnEnterKeyPress() Handles CIPSpreadTextBox.OnEnterKeyPress, CIPAllInCustRateTextBox.OnEnterKeyPress
+    '    CalculateCIPOptional()
+    'End Sub
+
+    Private Sub CIPInputOutputTextBox_Leave(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles CIPSpreadTextBox.Leave, CIPAllInCustRateTextBox.Leave
+        'CIPInputOutputTextBox_OnEnterKeyPress()
+        CalculateCIPOptional()
+    End Sub
+
+    Private Sub CIPComboBox_SelectionChangeCommitted(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles CIPAccrualBasisComboBox.SelectionChangeCommitted, CIPAmortizationTypeComboBox.SelectionChangeCommitted, CIPInterestFrequencyComboBox.SelectionChangeCommitted, CIPPrincipalFrequencyComboBox.SelectionChangeCommitted, CIPPrepaymentWaiverComboBox.SelectionChangeCommitted
+        If (ValidateCIPInputs()) Then
+            CalculateCIP()
+        End If
+    End Sub
+
+    Private Sub CIPResetButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles CIPResetButton.Click
+        SetDefaultValues(CalculatorsTab.CIP)
+    End Sub
+#End Region
+
+#Region "ALS Calculator Events"
+    'Private Sub ALSInputTextBox_OnEnterKeyPress() Handles ALSTermTextBox.OnEnterKeyPress, ALSAmortizationTextBox.OnEnterKeyPress
+    '    If (ValidateALSInputs()) Then
+    '        CalculateALS()
+    '    End If
+    'End Sub
+
+    Private Sub ALSInputTextBox_Leave(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles ALSTermTextBox.Leave, ALSAmortizationTextBox.Leave
+        'ALSInputTextBox_OnEnterKeyPress()
+        If (ValidateALSInputs()) Then
+            CalculateALS()
+        End If
+    End Sub
+
+    'Private Sub ALSInputOutputTextBox_OnEnterKeyPress() Handles ALSSpreadTextBox.OnEnterKeyPress, ALSAllInCustRateTextBox.OnEnterKeyPress
+    '    CalculateALSOptional()
+    'End Sub
+
+    Private Sub ALSSpreadTextBox_Leave(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles ALSSpreadTextBox.Leave, ALSAllInCustRateTextBox.Leave
+        'ALSInputOutputTextBox_OnEnterKeyPress()
+        CalculateALSOptional()
+    End Sub
+
+    Private Sub ALSConsumerLoanTypeComboBox_SelectionChangeCommitted(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles ALSConsumerLoanTypeComboBox.SelectionChangeCommitted
+        If (ValidateALSInputs()) Then
+            CalculateALS()
+        End If
+    End Sub
+
+    Private Sub ALSResetButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles ALSResetButton.Click
+        SetDefaultValues(CalculatorsTab.ALS)
+    End Sub
+#End Region
+
+#Region "P & I Calculator Events"
+    Private Sub PIResetButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles PIResetButton.Click
+        SetDefaultValues(CalculatorsTab.PI)
+    End Sub
+
+    Private Sub PICalculateButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles PICalculateButton.Click
+        If (ValidatePIInputs()) Then
+            CalculatePI()
+        End If
+    End Sub
+#End Region
+
+#Region "FTP Historical Calculator Events"
+    Private Sub FTPHistCalculateButton_Click(sender As Object, e As EventArgs) Handles FTPHistCalculateButton.Click
+        If (ValidateFTPHistInputs()) Then
+            CalculateFTPHistorical()
+        End If
+    End Sub
+
+    Private Sub FTPHistResetButton_Click(sender As Object, e As EventArgs) Handles FTPHistResetButton.Click
+        SetDefaultValues(CalculatorsTab.FTPH)
+    End Sub
+
+    Private Sub ToggleFormattingButton_Click(sender As Object, e As EventArgs) Handles ToggleFormattingButton.Click
+        If (FTPHistAutoGridControl.Columns("COF").DefaultCellStyle.Format = "#0.00%") Then
+            FTPHistAutoGridControl.Columns("COF").DefaultCellStyle.Format = "#0.00##########"
+        Else
+            FTPHistAutoGridControl.Columns("COF").DefaultCellStyle.Format = "#0.00%"
+        End If
+    End Sub
+
+
+#End Region
+
+End Class
