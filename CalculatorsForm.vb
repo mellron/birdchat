@@ -860,10 +860,11 @@ Public Class CalculatorsForm
             ' Must have a valid All-In COF or COF
             Try
                 ' Try for All-In COF first
-                Dim textVal = FHLB360AllInCOFResultTextBox.Text.Replace(" %", "")
+                ' TPP-9855 detolle 01-15-2026: Use Replace("%", "").Trim() to handle both "5.69 %" and "5.69%" formats
+                Dim textVal = FHLB360AllInCOFResultTextBox.Text.Replace("%", "").Trim()
                 If String.IsNullOrEmpty(textVal) Then
                     ' All-In COF has not been calculated - use COF
-                    textVal = FHLB360COFResultTextBox.Text.Replace(" %", "")
+                    textVal = FHLB360COFResultTextBox.Text.Replace("%", "").Trim()
                 End If
                 allInCOF = Double.Parse(textVal)
             Catch ex As Exception
@@ -1867,10 +1868,11 @@ Public Class CalculatorsForm
             ' Must have a valid All-In COF or CIP Rate.
             Try
                 ' Try for All-In COF first.
-                Dim textVal = CIPAllInCOFResultTextBox.Text.Replace(" %", "")
+                ' TPP-9855 detolle 01-15-2026: Use Replace("%", "").Trim() to handle both "5.69 %" and "5.69%" formats
+                Dim textVal = CIPAllInCOFResultTextBox.Text.Replace("%", "").Trim()
                 If (textVal Is Nothing) Or (textVal = String.Empty) Then
                     ' All-In COF has not been calculated - use CIP Rate.
-                    textVal = CIPRateResultTextBox.Text.Replace(" %", "")
+                    textVal = CIPRateResultTextBox.Text.Replace("%", "").Trim()
                 End If
                 allInCOF = Double.Parse(textVal)
             Catch ex As Exception
@@ -2077,8 +2079,9 @@ Public Class CalculatorsForm
             Dim valid As Boolean = True
 
             ' Must have a valid All-In COF.
+            ' TPP-9855 detolle 01-15-2026: Use Replace("%", "").Trim() to handle both "5.69 %" and "5.69%" formats
             Try
-                allInCOF = Double.Parse(ALSAllInCOFResultTextBox.Text.Replace(" %", ""))
+                allInCOF = Double.Parse(ALSAllInCOFResultTextBox.Text.Replace("%", "").Trim())
             Catch ex As Exception
                 valid = False
             End Try
