@@ -48,6 +48,7 @@
 '06/30/14   jrhald          Added logging for exceptions for issue #565.
 '10/03/2024 detolle         Addeding 306 Curves tab to the Calculators form.
 '07/09/2025 detolle         TPP-7119 detolle - initial implementation for CIP360 curve support
+'01/13/2026 detolle         TPP-9855 - Fixed validation logic for Spread and All-In Cust. Rate fields
 '*****************************************************************************/
 Option Explicit On
 Option Strict On
