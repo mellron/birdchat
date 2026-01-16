@@ -1,0 +1,34 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="My" GeneratedClassName="MySettings" UseMySettingsClassName="true">
+  <Profiles />
+  <Settings>
+    <Setting Name="ConnectionString" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">DHWDesktop</Value>
+    </Setting>
+    <Setting Name="DHWDesktop" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">Jb7lkBuBDNHqJPGXzOH187FIuWoGVpi/5krrxTTIGBSypUfi6eQpGmwfYINgafpKnAtUMW5S6jIU0QSnXZnBQLA1FsSUhs35l51fOvnaCc6pI6YnjX3Nlewcc4h3xHeIHJQs4i1psZdKLmvCSKXX2RBGJsr/MDrVVBMX6GlkN4NPgUcD86+7nL0V/EWseiF6i+v6AogkhQ2zF5XiPurIpeUBJd0munMdQCImiKnPAwWsfxwhbkmHC4L3fEhASYuike7/USeOaQ3RGTiLysxO+ZDJP1dFr8KBud0+bNRlwn8ebAPcac1nyA==</Value>
+    </Setting>
+    <Setting Name="ScreenShots" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">Prepayment4A,Prepayment4B,Prepayment4D,Prepayment4E,Prepayment4F,Prepayment4G,Prepayment4H,Prepayment4I,CalculatorsForm</Value>
+    </Setting>
+    <Setting Name="Environment" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">DevelopmentSettings</Value>
+    </Setting>
+    <Setting Name="UsersTable" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">tblUsers</Value>
+    </Setting>
+    <!-- TPP-0001 detolle - Environment-specific TreeView background colors (excluding Production) -->
+    <Setting Name="DevEnvironmentColor" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">LightBlue</Value>
+    </Setting>
+    <Setting Name="ITEnvironmentColor" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">LightGreen</Value>
+    </Setting>
+    <Setting Name="UATEnvironmentColor" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">Yellow</Value>
+    </Setting>
+    <Setting Name="ParallelEnvironmentColor" Type="System.String" Scope="Application">
+      <Value Profile="(Default)">Orange</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>
