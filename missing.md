@@ -18,17 +18,64 @@ The following ledger accounts are configured in Workday as **Income-type** but a
 FIN - Ledger Account Type = Income Requires a Revenue Category
 ```
 
-## Suggested Fix
+---
 
-These accounts need a Revenue Category worktag added to the integration mapping. Based on similar income accounts in this journal (4540665, 4110060, 4240022), the likely Revenue Category is:
+## Database Mapping Analysis
 
+Query against `[TPI].[dbo].[GLAccountCategoryMapping]`:
+
+```sql
+SELECT WorkdayGLAccount, SpendCategoryID, SpendCategoryName, RevenueCategoryID, RevenueCategoryName
+FROM [TPI].[dbo].[GLAccountCategoryMapping]
+WHERE WorkdayGLAccount IN ('5210752', '5210750')
 ```
-Revenue_Category_ID: Int_Inc_Gen
+
+### Current Mapping
+
+| WorkdayGLAccount | WorkdayGLAccountDescription | SpendCategoryID | RevenueCategoryID |
+|------------------|----------------------------|-----------------|-------------------|
+| 5210750 | IEO S/T BORROWINGS DUE TO FBS - INTERCO | Int_Exp_Gen | **(null)** |
+| 5210752 | IEO-S/T BORR DUE TO AFFL-INTRA-IT | Int_Exp_Gen | **(null)** |
+
+### The Problem
+
+There is a **mismatch** between the database mapping and Workday configuration:
+
+- **Database mapping** treats these as **Expense** accounts (has `SpendCategoryID = Int_Exp_Gen`)
+- **Workday configuration** treats these as **Income-type** accounts (requires `RevenueCategoryID`)
+
+---
+
+## Resolution Options
+
+### Option 1: Update GLAccountCategoryMapping Table (Recommended)
+
+Add `RevenueCategoryID` to these accounts in the mapping table:
+
+```sql
+UPDATE [TPI].[dbo].[GLAccountCategoryMapping]
+SET RevenueCategoryID = 'Int_Inc_Gen',
+    RevenueCategoryName = 'Interest Income - General',
+    UpdatedBy = 'TPP-9670',
+    UpdatedDate = GETDATE()
+WHERE WorkdayGLAccount IN ('5210750', '5210752')
 ```
 
-## Accounts Requiring Mapping
+### Option 2: Update Workday Ledger Account Configuration
 
-| Ledger Account | Description (if known) |
-|----------------|------------------------|
-| 5210752 | Interest Expense (classified as Income-type in Workday) |
-| 5210750 | Interest Expense (classified as Income-type in Workday) |
+Change the ledger account type in Workday from "Income" to "Expense" for accounts 5210750 and 5210752. This may require coordination with the Workday Finance team.
+
+### Option 3: Update Integration Logic
+
+Modify the integration to use a fallback Revenue Category when:
+- Workday requires a Revenue Category
+- Only a Spend Category exists in the mapping
+
+---
+
+## Summary
+
+| Account | Description | Current Category | Missing |
+|---------|-------------|------------------|---------|
+| 5210750 | IEO S/T BORROWINGS DUE TO FBS - INTERCO | SpendCategory only | RevenueCategoryID |
+| 5210752 | IEO-S/T BORR DUE TO AFFL-INTRA-IT | SpendCategory only | RevenueCategoryID |
