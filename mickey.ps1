@@ -30,20 +30,29 @@ public class MouseJiggler
 Add-Type -TypeDefinition $cSource
 
 Clear-Host
-Write-Host "Mouse Jiggler Running..." -ForegroundColor Green
+Write-Host "Mickey Running..." -ForegroundColor Green
 Write-Host "Press any key to stop." -ForegroundColor Yellow
 Write-Host ""
 
 $jiggleOffset = 1
 
-while (-not [Console]::KeyAvailable)
+$running = $true
+while ($running)
 {
     [MouseJiggler]::Jiggle($jiggleOffset)
     $jiggleOffset = -$jiggleOffset
-    Write-Host "`r[$(Get-Date -Format 'HH:mm:ss')] Jiggling..." -NoNewline
-    Start-Sleep -Seconds 60
+    Write-Host "`r[$(Get-Date -Format 'HH:mm:ss')] Mickey..." -NoNewline
+
+    # Check for keypress every second for 60 seconds
+    for ($i = 0; $i -lt 60; $i++) {
+        if ([Console]::KeyAvailable) {
+            $null = [Console]::ReadKey($true)
+            $running = $false
+            break
+        }
+        Start-Sleep -Seconds 1
+    }
 }
 
-$null = [Console]::ReadKey($true)
 Write-Host ""
-Write-Host "Mouse Jiggler Stopped." -ForegroundColor Red
+Write-Host "Mickey Stopped." -ForegroundColor Red
