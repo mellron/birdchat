@@ -2,8 +2,11 @@ $cSource = @'
 using System;
 using System.Runtime.InteropServices;
 
-public class MouseJiggler
+public class Mickey
 {
+    [DllImport("kernel32.dll")]
+    static extern uint SetThreadExecutionState(uint esFlags);
+
     [DllImport("user32.dll")]
     static extern bool SetCursorPos(int X, int Y);
 
@@ -17,6 +20,20 @@ public class MouseJiggler
         public int Y;
     }
 
+    const uint ES_CONTINUOUS = 0x80000000;
+    const uint ES_SYSTEM_REQUIRED = 0x00000001;
+    const uint ES_DISPLAY_REQUIRED = 0x00000002;
+
+    public static void KeepAwake()
+    {
+        SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED);
+    }
+
+    public static void AllowSleep()
+    {
+        SetThreadExecutionState(ES_CONTINUOUS);
+    }
+
     public static void Jiggle(int offset)
     {
         POINT p;
@@ -24,6 +41,7 @@ public class MouseJiggler
         SetCursorPos(p.X + offset, p.Y);
         System.Threading.Thread.Sleep(50);
         SetCursorPos(p.X, p.Y);
+        KeepAwake();
     }
 }
 '@
@@ -37,9 +55,11 @@ Write-Host ""
 $jiggleOffset = 1
 
 $running = $true
+[Mickey]::KeepAwake()
+
 while ($running)
 {
-    [MouseJiggler]::Jiggle($jiggleOffset)
+    [Mickey]::Jiggle($jiggleOffset)
     $jiggleOffset = -$jiggleOffset
     Write-Host "`r[$(Get-Date -Format 'HH:mm:ss')] Mickey..." -NoNewline
 
@@ -54,5 +74,6 @@ while ($running)
     }
 }
 
+[Mickey]::AllowSleep()
 Write-Host ""
 Write-Host "Mickey Stopped." -ForegroundColor Red
