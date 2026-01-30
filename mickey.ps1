@@ -34,7 +34,7 @@ public class Mickey
         SetThreadExecutionState(ES_CONTINUOUS);
     }
 
-    public static void Jiggle(int offset)
+    public static void Move(int offset)
     {
         POINT p;
         GetCursorPos(out p);
@@ -52,15 +52,15 @@ Write-Host "Mickey Running..." -ForegroundColor Green
 Write-Host "Press any key to stop." -ForegroundColor Yellow
 Write-Host ""
 
-$jiggleOffset = 1
+$mickeyOffset = 1
 
 $running = $true
 [Mickey]::KeepAwake()
 
 while ($running)
 {
-    [Mickey]::Jiggle($jiggleOffset)
-    $jiggleOffset = -$jiggleOffset
+    [Mickey]::Move($mickeyOffset)
+    $mickeyOffset = -$mickeyOffset
     Write-Host "`r[$(Get-Date -Format 'HH:mm:ss')] Mickey..." -NoNewline
 
     # Check for keypress every second for 60 seconds
