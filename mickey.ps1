@@ -13,6 +13,15 @@ public class Mickey
     [DllImport("user32.dll")]
     static extern bool GetCursorPos(out POINT lpPoint);
 
+    [DllImport("user32.dll")]
+    static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
     {
@@ -43,6 +52,21 @@ public class Mickey
         SetCursorPos(p.X, p.Y);
         KeepAwake();
     }
+
+    const byte VK_F15 = 0x7E;
+    const uint KEYEVENTF_KEYUP = 0x0002;
+
+    public static void PokeWindow(IntPtr hWnd)
+    {
+        IntPtr prev = GetForegroundWindow();
+        if (hWnd == IntPtr.Zero || hWnd == prev) return;
+        SetForegroundWindow(hWnd);
+        System.Threading.Thread.Sleep(50);
+        keybd_event(VK_F15, 0, 0, UIntPtr.Zero);
+        keybd_event(VK_F15, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        System.Threading.Thread.Sleep(50);
+        SetForegroundWindow(prev);
+    }
 }
 '@
 Add-Type -TypeDefinition $cSource
@@ -51,6 +75,14 @@ Clear-Host
 Write-Host "Mickey Running..." -ForegroundColor Green
 Write-Host "Press any key to stop." -ForegroundColor Yellow
 Write-Host ""
+
+# Find the Teams window
+$teamsProc = Get-Process | Where-Object { $_.MainWindowTitle -match "Teams" -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+if ($teamsProc) {
+    Write-Host "Found Teams window: $($teamsProc.MainWindowTitle)" -ForegroundColor Cyan
+} else {
+    Write-Host "Teams window not found - will keep checking." -ForegroundColor DarkYellow
+}
 
 $mickeyOffset = 1
 
@@ -61,7 +93,15 @@ while ($running)
 {
     [Mickey]::Move($mickeyOffset)
     $mickeyOffset = -$mickeyOffset
-    Write-Host "`r[$(Get-Date -Format 'HH:mm:ss')] Mickey..." -NoNewline
+
+    # Poke Teams to keep it active
+    $teamsProc = Get-Process | Where-Object { $_.MainWindowTitle -match "Teams" -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+    if ($teamsProc) {
+        [Mickey]::PokeWindow($teamsProc.MainWindowHandle)
+        Write-Host "`r[$(Get-Date -Format 'HH:mm:ss')] Mickey + Teams..." -NoNewline
+    } else {
+        Write-Host "`r[$(Get-Date -Format 'HH:mm:ss')] Mickey..." -NoNewline
+    }
 
     # Check for keypress every second for 60 seconds
     for ($i = 0; $i -lt 60; $i++) {
