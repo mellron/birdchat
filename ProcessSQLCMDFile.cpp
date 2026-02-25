@@ -1,6 +1,5 @@
 ﻿#include "ProcessSQLCMDFile.h"
 
-static const std::string LOG_FILE_PATH = "\\\\us.bank-dns.com\\NAS\\pri\\usbnet_dev\\db\\stage\\usbcommon\\251_NewUSBCommon.c_sql_nusb_i_ext251\\execsql.log";
 
 ProcessSQLCMDFile::ProcessSQLCMDFile(void) :ProcessSQLCMD()
 {
@@ -41,12 +40,36 @@ int ProcessSQLCMDFile::ExecuteCMD(bool displayoutput)
 
     SetConsoleOutputCP(CP_UTF8);
 
-    std::system((_command + " > " + tempfilename).c_str());
-
     //************************* Remove later ********************************//
-    Logger logger(LOG_FILE_PATH);
+    Logger logger(utility::getTempStagePath(_sEnvironment, "execsql.log"));
     logger.log(_command + " > " + tempfilename);
     //***********************************************************************//
+
+    std::string errfilename = tempfilename + ".err";
+    std::system((_command + " > " + tempfilename + " 2> " + errfilename).c_str());
+
+    // Log any SQLCMD errors from stderr
+    std::ifstream errFile(errfilename);
+    if (errFile.good() && errFile.peek() != std::ifstream::traits_type::eof())
+    {
+        std::string errLine;
+        while (std::getline(errFile, errLine))
+        {
+            if (!errLine.empty())
+                logger.log("SQLCMD ERROR: " + errLine);
+        }
+    }
+    errFile.close();
+    if (std::ifstream(errfilename))
+        std::remove(errfilename.c_str());
+
+    std::ifstream tempCheck(tempfilename);
+    if (!tempCheck.good() || tempCheck.peek() == std::ifstream::traits_type::eof())
+    {
+        logger.log("ERROR: Temp file was not created or is empty: " + tempfilename);
+        return -1;
+    }
+    tempCheck.close();
 
     //if file file_name exists
     if (std::ifstream(file_name))
