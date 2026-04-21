@@ -17,7 +17,7 @@ This document summarizes the two viable automation approaches and the tradeoffs 
 
 ## Option 1 — Batch / Staged Submission
 
-Treasury trade data is extracted from Bloomberg Trade Order Management System (TOMS) / Intrader and written to a staging area inside the US Bank firewall. A scheduled job picks up staged records, applies validation and the required $50MM Federal Reserve (FED) split, constructs MT515 messages, and sends them to FICC over Message Queue. FICC status responses (MT509) are logged and reconciled automatically.
+Treasury trade data is extracted from Bloomberg Trade Order Management System (TOMS) / Intrader and written to a staging area inside the US Bank firewall. A scheduled job picks up staged records, validates them, builds the required FICC trade messages, and sends them to FICC over Message Queue. FICC status responses are logged and reconciled automatically.
 
 **Characteristics:**
 
@@ -34,7 +34,7 @@ Treasury trade data is extracted from Bloomberg Trade Order Management System (T
 
 ## Option 2 — New Collateral Pledging Management System (CPMS) Page
 
-A new screen is built inside CPMS that mirrors the RTTM trade-entry layout. Bloomberg TOMS / Intrader data pre-populates the fields. The user reviews, optionally corrects, validates, and submits each trade from the CPMS screen. CPMS then constructs the MT515 and sends it over Message Queue. Status (MT509) appears back on the same screen.
+A new screen is built inside CPMS that mirrors the RTTM trade-entry layout. Bloomberg TOMS / Intrader data pre-populates the fields. The user reviews, optionally corrects, validates, and submits each trade from the CPMS screen. CPMS then builds the FICC trade message and sends it over Message Queue. Status appears back on the same screen.
 
 **Characteristics:**
 
@@ -60,7 +60,6 @@ A new screen is built inside CPMS that mirrors the RTTM trade-entry layout. Bloo
 | Fit at high volume | Stronger | Weaker |
 | Fit when traders want control | Weaker | Stronger |
 | $50MM split (FED cap) | System-silent | System-visible on screen |
-| Trade Cross Reference (Xref) generation | Behind the scenes | Shown to user |
 | Dev effort pattern | Integration / data-heavy | User interface plus same integration |
 | Fallback if Message Queue fails | Staged data can be replayed | User can resubmit from screen |
 | Dependency on CPMS UI stack decision | Low | High |
@@ -84,26 +83,14 @@ One caveat could narrow the gap: if the Intrader export needs heavy transformati
 
 ## What Both Options Share
 
-Both options require the same downstream components, so work on either starts the same conversations:
+Both options require the same downstream components:
 
-- **FICC Message Queue channel onboarding** — 20 to 30 business days lead time; starts with Message Queue Page 1 submission (Edward Pinto at Depository Trust & Clearing Corporation (DTCC))
-- **MT515 message construction** — extend the Swift Messaging Conversion Application Programming Interface (API) to build MT515 messages (Streetcar / Jose)
-- **MT509 response handling** — CPMS receives trade status
+- **FICC Message Queue channel onboarding** — roughly 20 to 30 business days of lead time before testing can begin
+- **MT515 message construction** — extend the Swift Messaging Conversion Application Programming Interface (API) to build FICC trade messages
+- **MT509 response handling** — CPMS receives trade status back from FICC
 - **$50MM FED split logic** — applies to any Delivery Versus Payment (DVP) trade over the cap
 - **Counterparty to FICC firm identifier mapping**
-- **Audit logging of every outbound MT515 and inbound MT509**
-
----
-
-## What Is Not Yet Decided
-
-| Item | Owner |
-|---|---|
-| Which option to pursue | Business line + Parshwa Shah |
-| Intrader export mechanism and field list | Brian Goetter (Money Center Trading) |
-| CPMS user interface technology stack (only matters for Option 2) | John |
-| Delivery Versus Payment (DVP) repo — Option A (new entry screen) vs Option B (defer) | Parshwa Shah |
-| Whether the US Bancorp Investments (USBI) Phase 3 Message Queue channel can be reused | Edward Pinto (DTCC) |
+- **Audit logging of every outbound and inbound message**
 
 ---
 
