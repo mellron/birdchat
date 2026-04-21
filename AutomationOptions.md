@@ -67,6 +67,21 @@ A new screen is built inside CPMS that mirrors the RTTM trade-entry layout. Bloo
 
 ---
 
+## Relative Build Effort (Rough, Directional)
+
+This is a directional judgment only — not a time or cost estimate. Both options require the same back-end work (Message Queue, MT515 construction, MT509 handling, FICC onboarding). Option 2 adds a full user interface on top of that shared work.
+
+| | Relative effort |
+|---|---|
+| Option 1 — Batch | **1x** |
+| Option 2 — CPMS Page | **~1.5x – 2x** |
+
+The gap is driven primarily by the new user interface in Option 2 (two tabs of fields, pre-population, validation, status display, edit/resubmit workflow) and its dependency on a Collateral Pledging Management System (CPMS) user interface stack decision that is still open.
+
+One caveat could narrow the gap: if the Intrader export needs heavy transformation or reconciliation before it can be submitted, Option 1's middle layer grows. That question is not yet answered.
+
+---
+
 ## What Both Options Share
 
 Both options require the same downstream components, so work on either starts the same conversations:
