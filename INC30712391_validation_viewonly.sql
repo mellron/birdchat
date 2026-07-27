@@ -88,13 +88,20 @@ ORDER BY Security_IT;
 /*=============================================================================
   STEP 4 — DATA UNTOUCHED: prove the fix changed no stored value.
 =============================================================================*/
-PRINT '--- STEP 4: stored SwapWeight still halved (proves view-only) ---';
-SELECT  MAX(SwapWeight) AS SwapWeight_Stored_StillHalved
+PRINT '--- STEP 4: stored SwapWeight still halved for the AFFECTED lots (proves view-only) ---';
+-- Must filter to the affected security's fanned lots. A blind MAX over the whole
+-- portfolio returns 1.0 from unrelated single-swap lots and proves nothing.
+SELECT  Ticket, COUNT(*) AS RowsPerTicket, MAX(SwapWeight) AS SwapWeight_Stored
 FROM    dbo.HedgeAccountingValues
 WHERE   AsOfDate = @AsOfDate
   AND   Portfolio = @Portfolio
-  AND   IsAdjustedRecord = 'Y';
--- EXPECT: ~0.055555556 (unchanged). The correction lives ONLY in the view.
+  AND   SecurityId = @Security
+  AND   IsAdjustedRecord = 'Y'
+GROUP BY Ticket
+HAVING  COUNT(*) > 1        -- the fanned lots
+ORDER BY Ticket;
+-- EXPECT: the 9 hedged lots at RowsPerTicket=2, SwapWeight_Stored ~0.055555556
+-- (unchanged). The correction lives ONLY in the view, not the table.
 
 
 /*=============================================================================
