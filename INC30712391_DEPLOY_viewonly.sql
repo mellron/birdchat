@@ -40,28 +40,33 @@
 =============================================================================*/
 ALTER view [dbo].[vw_curr_InTraderOps1] as
 /* INC30712391 view-only fix — detolle 2026-07-27. De-dup the multiple-unwind
-   fan-out and reconstruct correct per-lot values. No proc/table change. */
-SELECT
+   fan-out and reconstruct correct per-lot values. No proc/table change.
+   The [INC30712391] tags below mark every line that DIFFERS from the original view. */
+SELECT   -- [INC30712391] NEW outer layer: GROUP BY (at bottom) de-dups the fan-out;
+         -- per-lot values are rebuilt from the components in the Detail subquery below.
       Detail.AsOfDate
     , Detail.Group_IT
     , Detail.Intent_IT
     , Detail.Security_IT
     , Detail.Ticket_IT
-    , CAST(MAX(Detail.BookValue_IT) AS decimal(19,2))                       AS BookValue_IT
+    , CAST(MAX(Detail.BookValue_IT) AS decimal(19,2))                       AS BookValue_IT       -- same value, de-duped (MAX)
+    -- [INC30712391 CHANGED] was Vals.BookValueHedged (halved). Rebuilt = BookValue + FULL hedge + FULL unwind:
     , CAST(  MAX(Detail.BookValue_IT)
            + SUM(Detail.BookValueAdjHedge)
            + SUM(Detail.BookValueAdjUnwind) AS decimal(19,2))               AS BookValueHedged
+    -- [INC30712391 CHANGED] was (BookValueHedged - BookValue) per row. Rebuilt = FULL hedge + FULL unwind:
     , CAST(  SUM(Detail.BookValueAdjHedge)
            + SUM(Detail.BookValueAdjUnwind) AS decimal(19,2))               AS BookValueAdjustment
-    , CAST(SUM(Detail.BookValueAdjHedge)  AS decimal(19,2))                 AS BookValueAdjHedge
-    , CAST(SUM(Detail.BookValueAdjUnwind) AS decimal(19,2))                 AS BookValueAdjUnwind
-    , CAST(MAX(Detail.FairValue_IT)    AS decimal(19,2))                    AS FairValue_IT
-    , CAST(MAX(Detail.UnrealizedPL_IT) AS decimal(19,2))                    AS UnrealizedPL_IT
+    , CAST(SUM(Detail.BookValueAdjHedge)  AS decimal(19,2))                 AS BookValueAdjHedge   -- [INC30712391 CHANGED] fan-out: each row = hedge/N -> SUM restores the whole
+    , CAST(SUM(Detail.BookValueAdjUnwind) AS decimal(19,2))                 AS BookValueAdjUnwind  -- [INC30712391 CHANGED] fan-out: genuine per-record pieces -> SUM
+    , CAST(MAX(Detail.FairValue_IT)    AS decimal(19,2))                    AS FairValue_IT       -- same value, de-duped (MAX)
+    , CAST(MAX(Detail.UnrealizedPL_IT) AS decimal(19,2))                    AS UnrealizedPL_IT    -- same value, de-duped (MAX)
+    -- [INC30712391 CHANGED] was Vals.UnrealizedPLHedged (halved). Identity: FairValue - (rebuilt) BookValueHedged:
     , CAST(  MAX(Detail.FairValue_IT)
            - ( MAX(Detail.BookValue_IT)
              + SUM(Detail.BookValueAdjHedge)
              + SUM(Detail.BookValueAdjUnwind) ) AS decimal(19,2))           AS UnrealizedPLHedged
-FROM (
+FROM (   -- [INC30712391] everything from here down to ") AS Detail" is the ORIGINAL view body, UNCHANGED.
     select
     Vals.AsOfDate,
     Vals.Portfolio as Group_IT,
@@ -103,7 +108,7 @@ FROM (
     where Vals.JobId = (select max(JobId) from dbo.HedgeAccountingValues)
     and hold.IsSettled = 'Y'
 ) AS Detail
-GROUP BY
+GROUP BY   -- [INC30712391] NEW: collapse the fan-out to exactly ONE row per lot.
       Detail.AsOfDate
     , Detail.Group_IT
     , Detail.Intent_IT
@@ -117,28 +122,33 @@ GO
 =============================================================================*/
 ALTER view [dbo].[vw_hist_InTraderOps1] as
 /* INC30712391 view-only fix — detolle 2026-07-27. De-dup the multiple-unwind
-   fan-out and reconstruct correct per-lot values. No proc/table change. */
-SELECT
+   fan-out and reconstruct correct per-lot values. No proc/table change.
+   The [INC30712391] tags below mark every line that DIFFERS from the original view. */
+SELECT   -- [INC30712391] NEW outer layer: GROUP BY (at bottom) de-dups the fan-out;
+         -- per-lot values are rebuilt from the components in the Detail subquery below.
       Detail.AsOfDate
     , Detail.Group_IT
     , Detail.Intent_IT
     , Detail.Security_IT
     , Detail.Ticket_IT
-    , CAST(MAX(Detail.BookValue_IT) AS decimal(19,2))                       AS BookValue_IT
+    , CAST(MAX(Detail.BookValue_IT) AS decimal(19,2))                       AS BookValue_IT       -- same value, de-duped (MAX)
+    -- [INC30712391 CHANGED] was Vals.BookValueHedged (halved). Rebuilt = BookValue + FULL hedge + FULL unwind:
     , CAST(  MAX(Detail.BookValue_IT)
            + SUM(Detail.BookValueAdjHedge)
            + SUM(Detail.BookValueAdjUnwind) AS decimal(19,2))               AS BookValueHedged
+    -- [INC30712391 CHANGED] was (BookValueHedged - BookValue) per row. Rebuilt = FULL hedge + FULL unwind:
     , CAST(  SUM(Detail.BookValueAdjHedge)
            + SUM(Detail.BookValueAdjUnwind) AS decimal(19,2))               AS BookValueAdjustment
-    , CAST(SUM(Detail.BookValueAdjHedge)  AS decimal(19,2))                 AS BookValueAdjHedge
-    , CAST(SUM(Detail.BookValueAdjUnwind) AS decimal(19,2))                 AS BookValueAdjUnwind
-    , CAST(MAX(Detail.FairValue_IT)    AS decimal(19,2))                    AS FairValue_IT
-    , CAST(MAX(Detail.UnrealizedPL_IT) AS decimal(19,2))                    AS UnrealizedPL_IT
+    , CAST(SUM(Detail.BookValueAdjHedge)  AS decimal(19,2))                 AS BookValueAdjHedge   -- [INC30712391 CHANGED] fan-out: each row = hedge/N -> SUM restores the whole
+    , CAST(SUM(Detail.BookValueAdjUnwind) AS decimal(19,2))                 AS BookValueAdjUnwind  -- [INC30712391 CHANGED] fan-out: genuine per-record pieces -> SUM
+    , CAST(MAX(Detail.FairValue_IT)    AS decimal(19,2))                    AS FairValue_IT       -- same value, de-duped (MAX)
+    , CAST(MAX(Detail.UnrealizedPL_IT) AS decimal(19,2))                    AS UnrealizedPL_IT    -- same value, de-duped (MAX)
+    -- [INC30712391 CHANGED] was Vals.UnrealizedPLHedged (halved). Identity: FairValue - (rebuilt) BookValueHedged:
     , CAST(  MAX(Detail.FairValue_IT)
            - ( MAX(Detail.BookValue_IT)
              + SUM(Detail.BookValueAdjHedge)
              + SUM(Detail.BookValueAdjUnwind) ) AS decimal(19,2))           AS UnrealizedPLHedged
-FROM (
+FROM (   -- [INC30712391] everything from here down to ") AS Detail" is the ORIGINAL view body, UNCHANGED.
     select
     Vals.AsOfDate,
     Vals.Portfolio as Group_IT,
@@ -180,7 +190,7 @@ FROM (
         and Vals.AsOfDate = ValsTotal.AsOfDate
         where hold.IsSettled = 'Y'
 ) AS Detail
-GROUP BY
+GROUP BY   -- [INC30712391] NEW: collapse the fan-out to exactly ONE row per lot.
       Detail.AsOfDate
     , Detail.Group_IT
     , Detail.Intent_IT
