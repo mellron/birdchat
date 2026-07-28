@@ -148,7 +148,7 @@ InTraderOps2 AS (
     FROM InTraderOps a
     INNER JOIN (
         SELECT Ticket_IT
-             , SUM(BookValueAdjHedge)   AS BookValueAdjHedge   -- original view uses SUM (the bug)
+             , MAX(BookValueAdjHedge)   AS BookValueAdjHedge   -- INC30712391 Option C (AFTER fix): whole hedge is identical on each fanned row -> take ONCE. (Use SUM only for the pre-fix HALVED baseline.)
              , SUM(BookValueAdjUnwind)  AS BookValueAdjUnwind
         FROM InTraderOps
         GROUP BY Ticket_IT
