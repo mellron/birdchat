@@ -44,6 +44,26 @@
   Companion for the report doubling = the vw_*_InTraderOps1 de-dup in #2/#3
   (Option C). Deploy all three together.
 =============================================================================*/
+/***********************************************************
+SP Description:Inserts records to the ##AdjustedValues temporary tables for those tickets which are actively mapped in the dbo.Xref_HedgeMapping table and are therefore adjusted tickets
+Used By: Hedge Accounting Batch
+
+Created by: Spencer Gansluckner
+Created when:  7/11/2019
+
+Modifications:
+Date			By						Reason/What changed
+--------		-------------			-------------------
+7/11/2019		Spencer Gansluckner		Creation
+8/27/2020		Spencer Gansluckner		Added 3 new columns (delay, constantprepaymenterate, maturitydate) that are needed for calculating MBS adjusted yields
+12/10/2020		Spencer Gansluckner		Added 30 days to Delay per InTrader reccommendations.  This was done so the adjusted book yields are correct.
+12/16/2020		Spencer Gansluckner		Added PurchasePrice since MBS need that to calculate the book yield.
+2/06/2021		Spencer Gansluckner		Filtered CalypsoHedgeTrades (T and T1) for just effective trades
+3/27/2023		Spencer Gansluckner		Created new multiple swap approach
+04/09/2024		Aadil Desai				Added logic for multiple unwind
+07/02/2024      Sushma Kusumba          Added IsSettled Flag as 'Y' for CUSD holdings to exclude Intrader intraday records 
+07/28/2026      detolle                 INC30712391 - De-duplicated the multiple-unwind fan-out in the SwapWeights CTE so each lot's CurrentFace is counted once; SwapWeight/BookValueHedged no longer understated. See inline INC30712391 notes.
+*************************************************************/
 ALTER PROCEDURE [dbo].[spInsertValsToAdjValTemp]
 
 @JobId int,
@@ -854,6 +874,22 @@ GO
   per-record BookValueAdjUnwind. Base body unchanged inside the derived table.
 =============================================================================*/
 ALTER view [dbo].[vw_curr_InTraderOps1] as
+/***********************************************************
+View Description:Will show the most current days records for the InTradersOps1 report
+Used By: Hedge Accounting Batch
+
+Created by: Spencer Gansluckner
+Created when:  7/11/2019
+
+Modifications:
+Date			By						Reason/What changed
+--------		-------------			-------------------
+07/11/2019		Spencer Gansluckner		Creation
+10/28/2019		Spencer Gansluckner		Added 2 new fields: BookValueAdjHedge & BookValueAdjUnwind per jira item HA-511
+05/24/2024		Subham Maiti			Added valstotal change for multiple unwind
+07/02/2024      Sushma Kusumba          Added IsSettled Flag as 'Y' for CUSD holdings to exclude Intrader intraday records 
+07/28/2026      detolle                 INC30712391 - Collapsed the multiple-unwind fan-out to one row per ticket (MAX per-lot values, SUM BookValueAdjUnwind) so Power BI roll-ups don't double the hedge. See inline INC30712391 notes.
+*************************************************************/
 SELECT
       Detail.AsOfDate
     , Detail.Group_IT
@@ -928,6 +964,22 @@ GO
   date filter), so this is the one that removes the report doubling.
 =============================================================================*/
 ALTER view [dbo].[vw_hist_InTraderOps1] as
+/***********************************************************
+View Description:Will show the most current days records for the InTradersOps1 report
+Used By: Hedge Accounting Batch
+
+Created by: Spencer Gansluckner
+Created when:  7/11/2019
+
+Modifications:
+Date			By						Reason/What changed
+--------		-------------			-------------------
+07/11/2019		Spencer Gansluckner		Creation
+10/28/2019		Spencer Gansluckner		Added 2 new fields: BookValueAdjHedge & BookValueAdjUnwind per jira item HA-511
+05/24/2024		Subham Maiti			Added valstotal change for multiple unwind
+07/02/2024      Sushma Kusumba          Added IsSettled Flag as 'Y' for CUSD holdings to exclude Intrader intraday records 
+07/28/2026      detolle                 INC30712391 - Collapsed the multiple-unwind fan-out to one row per ticket (MAX per-lot values, SUM BookValueAdjUnwind) so Power BI roll-ups don't double the hedge. See inline INC30712391 notes.
+*************************************************************/
 SELECT
       Detail.AsOfDate
     , Detail.Group_IT
