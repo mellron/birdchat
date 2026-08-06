@@ -4,8 +4,8 @@ Script Name: NonBankGL_AvailableForUpload.sql
 Purpose:     Show the rows behind the "Available For Upload" number for the
              NonBankGL row of the GL Upload screen.
 
-Environment: UAT   -> <UAT-SQL-SERVER>,49001   database [Non_Bank_GL]
-             (IT/DEV -> <IT-SQL-SERVER>,49001 ; PROD -> <PROD-SQL-SERVER>)
+Environment: UAT   -> VMCKSA69901M08U.us.bank-dns.com,49001   database [Non_Bank_GL]
+             (IT/DEV -> VMBKSA69901MRT,49001 ; PROD -> VMCKSA69901M08X...)
 
 Mirrors:     ApplicationService.getNonBankGLAvailableForUploadCount()
              TPI/Application/TPI.Services/TPIUploadService.cs:419
